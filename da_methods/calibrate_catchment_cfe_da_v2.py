@@ -1,133 +1,111 @@
 """
-Calibrate CFE for a single catchment using NWM retro forcing + kriging obs.
-Optionally run test period using NWM operational forcing.
-With optional EnKF-based Data Assimilation for state updates.
+Per-catchment CFE calibration + test with optional EnKF data assimilation.
+
+This script does two things:
+  1. (Optional) Calibrate 9 CFE parameters with DDS against per-catchment kriging
+     obs, using NWM retro forcing.
+  2. Run the model over the test period (Oct 2023 – Oct 2024, includes Hurricane
+     Helene) using NWM operational forcing, with optional EnKF state assimilation.
 
 ================================================================================
-ENSEMBLE KALMAN FILTER (EnKF) DATA ASSIMILATION INTEGRATION
+TWO DA PATHS IN THIS SCRIPT (very different math)
 ================================================================================
+1. CALIBRATION loop (SpotpySetup.simulation → EnKFAssimilator.update_states_single)
+   Single-trajectory heuristic Kalman-gain nudging:
+     - forecast_var = (0.3 × Q_sim)^2  (heuristic, no ensemble)
+     - increment split is hardcoded: 30% soil / 15% GW / 20% Nash[0] / 35% Nash[1]
+     - mass-conserving overflow/underflow cascade (see below)
+   Kept so calibration-with-DA still works; not the focus of this script.
 
-THEORY:
-  The EnKF uses an ensemble of model realizations to estimate forecast error
-  covariance and compute analysis increments from kriging observations:
-  
-  Kalman Gain: K = P_f / (P_f + R)
-    where P_f = forecast error variance (from ensemble spread)
-          R   = observation error variance (from kriging uncertainty)
-  
-  State Update: x_a = x_f + K * (y_obs - y_f)
-    where x_f  = forecast state
-          y_obs = kriging observation (streamflow)
-          y_f  = forecast streamflow output
+2. TEST loop (run_testing_period → EnKFAssimilator.update_states)
+   Stochastic Ensemble Kalman Filter (Burgers / van Leeuwen / Evensen 1998):
+     - N CFE members run in parallel with perturbed precip + PET each hour
+     - forecast variance Pyy = ensemble variance of Q  (no heuristic)
+     - Kalman gain VECTOR: one K per state, from cross-covariance Pxy(state, Q)
+       (replaces the 30/15/20/35 hardcoded split — the data decides each hour)
+     - observation perturbed N times: obs_i = obs + sqrt(R) × N(0,1)
+     - each member updated with its own obs_i and its own innovation
+     - output time series is the ensemble mean
+   This is the production path. Measured improvement on this basin (21
+   catchments, Helene year): mean Test KGE 0.692 (no DA) → 0.823 (true EnKF).
 
-KRIGING OBSERVATIONS:
-  Input CSV format (from extract_krig_obs_batch.py):
-    datetime,qkrig,variance
-    2020-01-01 00:00:00,0.15,0.008
-    2020-01-01 01:00:00,0.16,0.009
-    ...
-  
-  - datetime: ISO format timestamp
-  - qkrig: kriging-estimated streamflow (mm/h)
-  - variance: kriging variance (observation error)
+================================================================================
+STATES UPDATED (4 states, applied per ensemble member with mass cascade)
+================================================================================
+  1. soil_reservoir["storage_m"]      via BMI: SOIL_CONCEPTUAL_STORAGE
+  2. gw_reservoir["storage_m"]        direct attribute (not exposed via BMI)
+  3. nash_storage[0]                  direct attribute (upstream Nash bucket)
+  4. nash_storage[1]                  direct attribute (feeds streamflow)
 
-STATES UPDATED (4-state, overflow-aware cascade):
-  1. soil_reservoir storage_m   (via BMI: SOIL_CONCEPTUAL_STORAGE)  — 30% of nudge
-  2. gw_reservoir   storage_m   (direct attr)                       — 15% of nudge
-  3. nash_storage[0]            (direct attr, upstream Nash bucket) — 20% of nudge
-  4. nash_storage[1]            (direct attr, feeds stream)         — 35% of nudge
-  Nash[1] gets the heaviest weight because it feeds streamflow the next hour,
-  giving DA the fastest leverage on Q during rising-limb events.
-
-  Mass conservation: when a state hits its bound, the excess/deficit is
-  redirected to the next state along CFE's physical flow direction instead
-  of being silently clipped:
+Mass-conserving cascade — when a state hits its bound, the excess/deficit is
+redirected along CFE's physical flow direction instead of being silently clipped:
     Positive corrections (water added):
-       soil full → push excess to Nash[0]
-       GW   full → push excess to Nash[1]
+       soil full → excess pushed to Nash[0]
+       GW   full → excess pushed to Nash[1]
     Negative corrections (water removed):
-       Nash[1] < 0 → absorb deficit from Nash[0]
-       Nash[0] < 0 → absorb deficit from soil
-       soil    < 0 → absorb deficit from GW
-       GW      < 0 → accept loss (can't create water from nothing)
-
-TYPICAL IMPROVEMENTS (from literature):
-  - KGE gain: 5-15% (conservative to aggressive DA)
-  - NSE gain: 8-20%
-  - Peak flow bias: Reduced 10-25%
-  - Recession: Better characterized
-
-DA MODES IN THIS SCRIPT
-  - Calibration loop (SpotpySetup.simulation): single-trajectory heuristic
-      Kalman-gain nudging with prescribed 30/15/20/35 split and
-      forecast_var = (0.3 × Q_sim)^2. Kept for backward-compat; not the
-      focus of this script.
-  - Test loop (run_testing_period): TRUE stochastic Ensemble Kalman Filter
-      (Burgers / van Leeuwen / Evensen 1998). Runs N CFE members with
-      perturbed forcing and observations, computes Kalman gains from
-      ensemble cross-covariance (not heuristics), and updates every
-      member independently. Output is the ensemble mean Q_sim.
-
-CONFIGURATION GUIDE:
-  --enkf-members 20 (default)
-    Conservative: 10-15 (faster, less reliable covariance)
-    Moderate:     20-30 (balanced)
-    Aggressive:   50-100 (slower, more accurate covariance)
-
-  --enkf-obs-error-std 0.05 (default, mm/h)
-    Used only when the obs CSV has no 'variance' column; otherwise
-    per-hour kriging variance is used.
-
-Perturbation defaults (test loop only, moderate setting):
-    precip:        ±15% multiplicative noise, clipped at 0
-    PET:           ±10% multiplicative noise, clipped at 0
-    initial state: ±5% multiplicative noise on soil/GW/Nash
-    observation:   sqrt(kriging variance) per Burgers/Evensen
+       Nash[1] < 0 → deficit absorbed from Nash[0]
+       Nash[0] < 0 → deficit absorbed from soil
+       soil    < 0 → deficit absorbed from GW
+       GW      < 0 → accept loss (logged in mm via total_overflow_lost_mm)
 
 ================================================================================
-Forcing (training):  per-catchment NWM retro CSV from extract_nwm_forcing.py
-                     columns: time, UGRD_10maboveground, precip_rate, DSWRF_surface,
-                              TMP_2maboveground, SPFH_2maboveground, VGRD_10maboveground,
-                              DLWRF_surface, PRES_surface, APCP_surface
-Forcing (testing):   per-catchment NWM operational CSVs (two dirs: 2023_2024_feb, 2024_feb_2025_sep)
-Obs:                 per-catchment kriging CSV from extract_krig_obs_batch.py
-                     columns: datetime, qkrig, variance  (qkrig in mm/h)
+INPUTS
+================================================================================
+Forcing (training):  per-catchment NWM retro CSV
+                     columns: time, APCP_surface, DSWRF_surface, TMP_2maboveground, ...
+Forcing (testing):   per-catchment NWM operational CSVs (two dirs concatenated)
+                     APCP_surface in kg/m²/s → converted to mm/h inside
+Obs (kriging):       per-catchment CSV. Three column layouts auto-handled:
+                       a) datetime, qkrig                (Suma's older format)
+                       b) datetime, qkrig, variance       (Suma's with-variance)
+                       c) time, qkrig_mm_hr               (Kunal's standard)
+                       d) time, qkrig_mm_hr, qkrig_variance  (Kunal's with-variance)
+                     If a per-hour variance column is present it is used as R;
+                     otherwise R = --enkf-obs-error-std^2 is used as fallback.
 
 Time splits:
   Spinup (cal):   2019-01-01 00:00 → 2019-12-31 23:00
-  Calibration:    2020-01-01 00:00 → 2022-12-31 23:00
-  Spinup (test):  2023-02-01 00:00 → 2023-09-30 23:00
-  Test (Helene):  2023-10-01 00:00 → 2024-10-31 23:00
+  Calibration:   2020-01-01 00:00 → 2022-12-31 23:00
+  Spinup (test): 2023-02-01 00:00 → 2023-09-30 23:00
+  Test (Helene): 2023-10-01 00:00 → 2024-10-31 23:00
 
-Usage:
-  python3 calibrate_catchment_nwm.py \\
+================================================================================
+KEY CLI FLAGS
+================================================================================
+  --enkf-enabled           Turn DA on (both cal and test paths)
+  --test-only              Skip DDS; read best_params.json and run only the test path
+  --enkf-members 20        N ensemble members in the test loop (>=2 required)
+  --enkf-obs-error-std 0.05  Fallback obs std (mm/h) when no variance column
+
+Test-loop perturbation defaults (moderate; see EnKFAssimilator.__init__):
+    precip:         ×N(1, 0.15), clipped at 0
+    PET:            ×N(1, 0.10), clipped at 0
+    initial state:  ×N(1, 0.05) on soil/GW; small additive jitter on Nash
+    observation:    additive noise with std sqrt(R)
+
+================================================================================
+USAGE
+================================================================================
+Production run (test-only, true EnKF, N=20):
+  python3 calibrate_catchment_cfe_da_v2.py \\
     --cat-id cat-1016300 \\
     --forcing-dir  /mnt/disk2/suma_helen_poster/nwm_retro_catchment_forcings \\
-    --obs-dir      /mnt/disk2/suma_helen_poster/krig_obs_catchments \\
+    --obs-dir      /mnt/disk2/1400_sites_helene/catchment_ts_03463300 \\
     --cfe-dir      /mnt/disk2/suma_helen_poster/cfe_py \\
     --config-file  /mnt/disk2/suma_helen_poster/run_gpu/cat_03463300_bmi_config_cfe.json \\
     --param-bounds /mnt/disk2/suma_helen_poster/run_gpu/CFE_parameter_bounds.json \\
-    --out-dir      /mnt/disk2/suma_helen_poster/catchment_results \\
+    --out-dir      /mnt/disk2/suma_helen_poster/da_results/v2_true_enkf \\
     --test-forcing-dir1 /mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2023_2024_feb/forcings \\
     --test-forcing-dir2 /mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2024_feb_2025_sep/forcings \\
-    --N 1000
+    --test-only \\
+    --enkf-enabled --enkf-members 20 --enkf-obs-error-std 0.05
 
-With EnKF-DA enabled:
-  python3 calibrate_catchment_nwm.py \\
-    --cat-id cat-1016300 \\
-    ... (all same as above) \\
-    --enkf-enabled \\
-    --enkf-members 20 \\
-    --enkf-obs-error-std 0.05
+NOTE: pre-stage best_params.json from Run 3 into the out-dir before --test-only:
+  mkdir -p <out-dir>/<cat-id>
+  cp <run3-dir>/<cat-id>/<cat-id>_best_params.json <out-dir>/<cat-id>/
 
-To run all 21 catchments in parallel:
-  for cat in cat-1016279 cat-1016280 cat-1016281 cat-1016282 cat-1016283 \\
-             cat-1016300 cat-1016301 cat-1016302 cat-1016303 cat-1016304 \\
-             cat-1016305 cat-1016306 cat-1016307 cat-1016308 cat-1016309 \\
-             cat-1016310 cat-1016311 cat-1016312 cat-1016313 cat-1016314 \\
-             cat-1016315; do
-    nohup python3 calibrate_catchment_nwm.py --cat-id $cat ... --enkf-enabled > logs/${cat}.log 2>&1 &
-  done
+To run all 21 catchments, launch in batches of ~5 (each catchment uses N CFE
+instances simultaneously; 21 × 20 = 420 processes if run all at once).
 """
 
 import argparse
@@ -179,10 +157,20 @@ ENKF_CONFIG       = {}
 
 class EnKFAssimilator:
     """
-    Ensemble Kalman Filter for CFE state updates using kriging observations.
-    
-    Updates soil moisture and groundwater storage based on streamflow observations
-    with proper handling of ensemble spread and observation error covariance.
+    Ensemble Kalman Filter for CFE state updates from per-catchment kriging obs.
+
+    Exposes two distinct update paths:
+      - update_states_single(model, ...): single-trajectory heuristic update with
+        a hardcoded 30/15/20/35 state split and a (0.3 * Q_sim)^2 forecast
+        variance. Used by the calibration loop.
+      - update_states(models, ...): true stochastic EnKF
+        (Burgers / van Leeuwen / Evensen 1998) over N ensemble members. The
+        Kalman gain per state is derived from ensemble cross-covariance and
+        observations are perturbed per member. Used by the test loop.
+
+    Both paths update the same 4 CFE states (soil, GW, Nash[0], Nash[1]) and
+    apply the same mass-conserving overflow/underflow cascade so corrections
+    are redirected along CFE's flow path instead of being silently clipped.
     """
     
     def __init__(self, n_members=20, obs_error_std=0.05, obs_file=None,
