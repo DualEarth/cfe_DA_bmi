@@ -31,7 +31,7 @@ KRIGING OBSERVATIONS:
   - qkrig: kriging-estimated streamflow (mm/h)
   - variance: kriging variance (observation error)
 
-STATES UPDATED (4-state):
+STATES UPDATED (4-state, overflow-aware cascade):
   1. soil_reservoir storage_m   (via BMI: SOIL_CONCEPTUAL_STORAGE)  — 30% of nudge
   2. gw_reservoir   storage_m   (direct attr)                       — 15% of nudge
   3. nash_storage[0]            (direct attr, upstream Nash bucket) — 20% of nudge
@@ -39,22 +39,50 @@ STATES UPDATED (4-state):
   Nash[1] gets the heaviest weight because it feeds streamflow the next hour,
   giving DA the fastest leverage on Q during rising-limb events.
 
+  Mass conservation: when a state hits its bound, the excess/deficit is
+  redirected to the next state along CFE's physical flow direction instead
+  of being silently clipped:
+    Positive corrections (water added):
+       soil full → push excess to Nash[0]
+       GW   full → push excess to Nash[1]
+    Negative corrections (water removed):
+       Nash[1] < 0 → absorb deficit from Nash[0]
+       Nash[0] < 0 → absorb deficit from soil
+       soil    < 0 → absorb deficit from GW
+       GW      < 0 → accept loss (can't create water from nothing)
+
 TYPICAL IMPROVEMENTS (from literature):
   - KGE gain: 5-15% (conservative to aggressive DA)
   - NSE gain: 8-20%
   - Peak flow bias: Reduced 10-25%
   - Recession: Better characterized
 
+DA MODES IN THIS SCRIPT
+  - Calibration loop (SpotpySetup.simulation): single-trajectory heuristic
+      Kalman-gain nudging with prescribed 30/15/20/35 split and
+      forecast_var = (0.3 × Q_sim)^2. Kept for backward-compat; not the
+      focus of this script.
+  - Test loop (run_testing_period): TRUE stochastic Ensemble Kalman Filter
+      (Burgers / van Leeuwen / Evensen 1998). Runs N CFE members with
+      perturbed forcing and observations, computes Kalman gains from
+      ensemble cross-covariance (not heuristics), and updates every
+      member independently. Output is the ensemble mean Q_sim.
+
 CONFIGURATION GUIDE:
   --enkf-members 20 (default)
-    Conservative: 10-15 (faster, less ensemble spread correction)
+    Conservative: 10-15 (faster, less reliable covariance)
     Moderate:     20-30 (balanced)
-    Aggressive:   50-100 (slower, strong ensemble spread correction)
-  
+    Aggressive:   50-100 (slower, more accurate covariance)
+
   --enkf-obs-error-std 0.05 (default, mm/h)
-    High confidence in obs:  0.03 (stronger DA)
-    Medium confidence:       0.05-0.08 (balanced)
-    Low confidence:          0.10+ (weaker DA, rely on forecast)
+    Used only when the obs CSV has no 'variance' column; otherwise
+    per-hour kriging variance is used.
+
+Perturbation defaults (test loop only, moderate setting):
+    precip:        ±15% multiplicative noise, clipped at 0
+    PET:           ±10% multiplicative noise, clipped at 0
+    initial state: ±5% multiplicative noise on soil/GW/Nash
+    observation:   sqrt(kriging variance) per Burgers/Evensen
 
 ================================================================================
 Forcing (training):  per-catchment NWM retro CSV from extract_nwm_forcing.py
@@ -157,18 +185,28 @@ class EnKFAssimilator:
     with proper handling of ensemble spread and observation error covariance.
     """
     
-    def __init__(self, n_members=20, obs_error_std=0.05, obs_file=None):
+    def __init__(self, n_members=20, obs_error_std=0.05, obs_file=None,
+                 precip_perturb_frac=0.15, pet_perturb_frac=0.10,
+                 init_state_perturb_frac=0.05, rng_seed=None):
         """
         Initialize EnKF assimilator.
-        
+
         Args:
-            n_members (int): Number of ensemble members
-            obs_error_std (float): Observation error std dev (mm/h)
+            n_members (int): Number of ensemble members (>=2 for true EnKF)
+            obs_error_std (float): Default obs std dev when CSV lacks 'variance'
             obs_file (str): Path to kriging observations CSV
+            precip_perturb_frac (float): Multiplicative noise std for precip
+            pet_perturb_frac (float): Multiplicative noise std for PET
+            init_state_perturb_frac (float): Multiplicative noise std on init states
+            rng_seed (int or None): Seed for the ensemble random generator
         """
         self.n_members = n_members
         self.obs_error_std = obs_error_std
         self.obs_error_var = obs_error_std ** 2
+        self.precip_perturb_frac     = precip_perturb_frac
+        self.pet_perturb_frac        = pet_perturb_frac
+        self.init_state_perturb_frac = init_state_perturb_frac
+        self.rng = np.random.default_rng(rng_seed)
         
         # Load kriging observations
         # Handles two formats:
@@ -188,16 +226,178 @@ class EnKFAssimilator:
         
         self.n_updates = 0
         self.total_increment = 0.0
-    
-    def update_states(self, model, current_date, forecast_runoff_mm_h):
+        self.total_overflow_lost_mm = 0.0  # water lost at GW underflow (mass-conservation breach)
+
+        # True-EnKF diagnostics (test path)
+        self.avg_pyy = 0.0
+        self.avg_K_sm = 0.0
+        self.avg_K_gw = 0.0
+        self.avg_K_n0 = 0.0
+        self.avg_K_n1 = 0.0
+
+    # ------------------------------------------------------------------
+    # Ensemble helpers (used by the test loop)
+    # ------------------------------------------------------------------
+    def perturb_forcing(self, precip_mm_h, pet_mm_h):
+        """Return arrays of length n_members with multiplicative noise on (P, PET)."""
+        N = self.n_members
+        p = precip_mm_h * (1.0 + self.precip_perturb_frac * self.rng.standard_normal(N))
+        e = pet_mm_h    * (1.0 + self.pet_perturb_frac    * self.rng.standard_normal(N))
+        return np.maximum(p, 0.0), np.maximum(e, 0.0)
+
+    def perturb_initial_state(self, value, upper=None, floor=1e-6):
+        """Multiplicatively perturb a single initial-state scalar across N members."""
+        v = value * (1.0 + self.init_state_perturb_frac * self.rng.standard_normal(self.n_members))
+        v = np.maximum(v, floor)
+        if upper is not None:
+            v = np.minimum(v, upper)
+        return v
+
+    # ------------------------------------------------------------------
+    # True stochastic EnKF (Burgers / van Leeuwen / Evensen 1998)
+    # Used by run_testing_period — replaces 30/15/20/35 + 0.3-heuristic with
+    # ensemble-derived Kalman gains.
+    # ------------------------------------------------------------------
+    def update_states(self, models, current_date, forecast_runoffs_mm_h):
         """
-        Perform EnKF state update using kriging observation.
-        
+        Perform a true stochastic EnKF update across N ensemble members.
+
+        Args:
+            models: list of N CFE BMI model instances (one per ensemble member)
+            current_date (str): 'YYYY-MM-DD HH:MM:SS'
+            forecast_runoffs_mm_h: array-like of N forecast runoffs (mm/h)
+
+        Returns:
+            dict with update statistics (mean innovation, Pyy, K per state).
+        """
+        stats = {"updated": False, "innovation_mean": 0.0, "pyy": 0.0,
+                 "K_sm": 0.0, "K_gw": 0.0, "K_n0": 0.0, "K_n1": 0.0}
+
+        if current_date not in self.obs_dict:
+            return stats
+        obs = self.obs_dict[current_date]
+        obs_var = self.obs_var_dict[current_date]
+        if pd.isna(obs):
+            return stats
+
+        q = np.asarray(forecast_runoffs_mm_h, dtype=float)
+        if np.any(np.isnan(q)):
+            return stats
+
+        N = self.n_members
+        if N < 2:
+            return stats  # need ≥2 members for a meaningful covariance
+
+        # ---- Collect ensemble of 4 states (meters) ----
+        sm = np.array([m.get_value('SOIL_CONCEPTUAL_STORAGE') for m in models], dtype=float)
+        gw = np.array([m.gw_reservoir["storage_m"] for m in models], dtype=float)
+        n0 = np.array([float(m.nash_storage[0]) for m in models], dtype=float)
+        n1 = np.array([float(m.nash_storage[1]) for m in models], dtype=float)
+
+        # ---- Ensemble means and anomalies ----
+        sm_a = sm - sm.mean()
+        gw_a = gw - gw.mean()
+        n0_a = n0 - n0.mean()
+        n1_a = n1 - n1.mean()
+        q_mean = q.mean()
+        q_a    = q - q_mean
+
+        # Pyy = ensemble variance of Q (mm/h)^2 ; degenerate if all members agree
+        Pyy = float((q_a * q_a).sum() / (N - 1))
+        denom = Pyy + obs_var
+        if denom < 1e-12:
+            return stats
+
+        # Pxy = state/Q cross-covariance (units: m × mm/h)
+        Pxy_sm = float((sm_a * q_a).sum() / (N - 1))
+        Pxy_gw = float((gw_a * q_a).sum() / (N - 1))
+        Pxy_n0 = float((n0_a * q_a).sum() / (N - 1))
+        Pxy_n1 = float((n1_a * q_a).sum() / (N - 1))
+
+        K_sm = Pxy_sm / denom   # units: m / (mm/h)
+        K_gw = Pxy_gw / denom
+        K_n0 = Pxy_n0 / denom
+        K_n1 = Pxy_n1 / denom
+
+        # Perturb the observation N times (Burgers/Evensen)
+        obs_pert = obs + np.sqrt(max(obs_var, 0.0)) * self.rng.standard_normal(N)
+
+        # Per-member innovation (mm/h); state increments (m)
+        innov = obs_pert - q
+        sm_delta = K_sm * innov
+        gw_delta = K_gw * innov
+        n0_delta = K_n0 * innov
+        n1_delta = K_n1 * innov
+
+        # ---- Apply per member with overflow-aware cascade ----
+        for i, m in enumerate(models):
+            sm_max = m.soil_reservoir["storage_max_m"]
+            gw_max = m.gw_reservoir["storage_max_m"]
+
+            sm_raw = sm[i] + sm_delta[i]
+            gw_raw = gw[i] + gw_delta[i]
+            n0_raw = n0[i] + n0_delta[i]
+            n1_raw = n1[i] + n1_delta[i]
+
+            # Positive overflow cascade: soil→Nash[0], GW→Nash[1]
+            so = max(sm_raw - sm_max, 0.0); sm_raw -= so; n0_raw += so
+            go = max(gw_raw - gw_max, 0.0); gw_raw -= go; n1_raw += go
+
+            # Negative underflow cascade: Nash[1]→Nash[0]→soil→GW→loss
+            n1u = max(-n1_raw, 0.0); n1_raw += n1u; n0_raw -= n1u
+            n0u = max(-n0_raw, 0.0); n0_raw += n0u; sm_raw -= n0u
+            smu = max(-sm_raw, 0.0); sm_raw += smu; gw_raw -= smu
+            gwu = max(-gw_raw, 0.0); gw_raw += gwu
+            self.total_overflow_lost_mm += gwu * 1000.0
+
+            if (np.isnan(sm_raw) or np.isnan(gw_raw)
+                    or np.isnan(n0_raw) or np.isnan(n1_raw)):
+                continue
+
+            sm_new = float(np.clip(sm_raw, 0.0, sm_max))
+            gw_new = float(np.clip(gw_raw, 0.0, gw_max))
+            n0_new = float(np.clip(n0_raw, 0.0, None))
+            n1_new = float(np.clip(n1_raw, 0.0, None))
+
+            m.set_value('SOIL_CONCEPTUAL_STORAGE', sm_new)
+            m.gw_reservoir["storage_m"] = gw_new
+            m.nash_storage[0] = n0_new
+            m.nash_storage[1] = n1_new
+
+        # ---- Diagnostics ----
+        self.n_updates += 1
+        innov_mean = float(innov.mean())
+        self.total_increment += abs(innov_mean)  # repurpose for ensemble: mean innov magnitude
+        # Running averages of Pyy and Kalman gains for end-of-run reporting
+        a = self.n_updates
+        self.avg_pyy  = ((a - 1) * self.avg_pyy  + Pyy)  / a
+        self.avg_K_sm = ((a - 1) * self.avg_K_sm + K_sm) / a
+        self.avg_K_gw = ((a - 1) * self.avg_K_gw + K_gw) / a
+        self.avg_K_n0 = ((a - 1) * self.avg_K_n0 + K_n0) / a
+        self.avg_K_n1 = ((a - 1) * self.avg_K_n1 + K_n1) / a
+
+        stats.update(updated=True, innovation_mean=innov_mean, pyy=Pyy,
+                     K_sm=K_sm, K_gw=K_gw, K_n0=K_n0, K_n1=K_n1)
+
+        # Log sparingly — every hour is noisy. Print at storms (large Pyy).
+        if Pyy > 1e-4 or self.n_updates % 200 == 0:
+            print(f"  [EnKF N={N}] {current_date} | obs={obs:.3f} | q_mean={q_mean:.3f} | "
+                  f"innov_mean={innov_mean:+.4f} | Pyy={Pyy:.6f} | "
+                  f"K_sm={K_sm:+.3e} K_gw={K_gw:+.3e} K_n0={K_n0:+.3e} K_n1={K_n1:+.3e}")
+
+        return stats
+
+    def update_states_single(self, model, current_date, forecast_runoff_mm_h):
+        """
+        Single-trajectory heuristic update (used by the calibration loop only).
+        Uses the prescribed 30/15/20/35 split and (0.3 * Q_sim)^2 forecast var.
+        The true ensemble EnKF is in `update_states` and is used by the test loop.
+
         Args:
             model: CFE BMI model instance
             current_date (str): Current date in 'YYYY-MM-DD HH:MM:SS' format
             forecast_runoff_mm_h (float): Model forecast runoff (mm/h)
-        
+
         Returns:
             dict: Update statistics (innovation, Kalman gain, increments)
         """
@@ -250,13 +450,50 @@ class EnKFAssimilator:
             nash0_increment_m = (total_increment_mm * 0.20) / 1000.0
             nash1_increment_m = (total_increment_mm * 0.35) / 1000.0
 
-            # Apply increments with physical bounds.
-            # soil / GW: clip to [0, storage_max_m]
-            # nash    : clip to [0, +inf) — accept the clip loss when bucket is empty
-            sm_new    = float(np.clip(sm    + sm_increment_m,    0.0, sm_max))
-            gw_new    = float(np.clip(gw    + gw_increment_m,    0.0, gw_max))
-            nash0_new = float(np.clip(nash0 + nash0_increment_m, 0.0, None))
-            nash1_new = float(np.clip(nash1 + nash1_increment_m, 0.0, None))
+            # Apply increments with overflow-aware cascade.
+            # Preserves mass conservation: when a state hits its bound, the residual
+            # is redirected to the next state along CFE's physical flow direction
+            # instead of being silently clipped away.
+            sm_raw    = sm    + sm_increment_m
+            gw_raw    = gw    + gw_increment_m
+            nash0_raw = nash0 + nash0_increment_m
+            nash1_raw = nash1 + nash1_increment_m
+
+            # Positive overflow cascade (water added beyond a bucket's max)
+            #   soil → Nash[0],   GW → Nash[1]
+            sm_overflow_m = max(sm_raw - sm_max, 0.0)
+            sm_raw       -= sm_overflow_m
+            nash0_raw    += sm_overflow_m
+
+            gw_overflow_m = max(gw_raw - gw_max, 0.0)
+            gw_raw       -= gw_overflow_m
+            nash1_raw    += gw_overflow_m
+            # Nash buckets have no max in standard CFE config → no further overflow.
+
+            # Negative underflow cascade (water removed below 0)
+            #   Nash[1] < 0 → Nash[0] → soil → GW → loss
+            n1_deficit_m  = max(-nash1_raw, 0.0)
+            nash1_raw    += n1_deficit_m
+            nash0_raw    -= n1_deficit_m
+
+            n0_deficit_m  = max(-nash0_raw, 0.0)
+            nash0_raw    += n0_deficit_m
+            sm_raw       -= n0_deficit_m
+
+            sm_deficit_m  = max(-sm_raw, 0.0)
+            sm_raw       += sm_deficit_m
+            gw_raw       -= sm_deficit_m
+
+            gw_deficit_m  = max(-gw_raw, 0.0)
+            gw_raw       += gw_deficit_m
+            # GW deficit cannot cascade further — accept the mass loss.
+            self.total_overflow_lost_mm += gw_deficit_m * 1000.0
+
+            # Final clip is a safety no-op after the cascade above.
+            sm_new    = float(np.clip(sm_raw,    0.0, sm_max))
+            gw_new    = float(np.clip(gw_raw,    0.0, gw_max))
+            nash0_new = float(np.clip(nash0_raw, 0.0, None))
+            nash1_new = float(np.clip(nash1_raw, 0.0, None))
 
             # Final guard: never write NaN to any of the 4 states (would break CFE for the rest of the run)
             if np.isnan(sm_new) or np.isnan(gw_new) or np.isnan(nash0_new) or np.isnan(nash1_new):
@@ -457,15 +694,16 @@ class SpotpySetup(object):
             # Get current forecast runoff
             forecast_runoff = model.get_value('land_surface_water__runoff_depth') * 1000  # m/h → mm/h
             
-            # Perform EnKF state update if enabled
+            # Calibration path uses the single-trajectory heuristic update.
+            # (True ensemble EnKF would multiply DDS cost N-fold; not the goal here.)
             if ENKF_ENABLED and self.enkf is not None:
-                self.enkf.update_states(model, current_date, forecast_runoff)
-            
+                self.enkf.update_states_single(model, current_date, forecast_runoff)
+
             for o in outputs:
                 out_lists[o].append(model.get_value(o))
 
         model.finalize()
-        
+
         # Log EnKF statistics if enabled
         if ENKF_ENABLED and self.enkf is not None:
             print(f"[DA Stats] Total updates: {self.enkf.n_updates} | "
@@ -511,54 +749,95 @@ def run_testing_period(best_param_dict):
     with open(tmp_cfg, 'w') as f:
         json.dump(cfg, f)
 
-    model = bmi_cfe.BMI_CFE(cfg_file=tmp_cfg)
-    model.load_forcing_file = custom_load_forcing.__get__(model)
-    model.initialize()
-
-    df = load_test_forcing()
-
-    # Initialize EnKF for test period if enabled
+    # Initialize EnKF assimilator first so its RNG/perturbation knobs are available
     enkf_test = None
+    N_members = 1
     if ENKF_ENABLED:
         enkf_test = EnKFAssimilator(
             n_members=ENKF_CONFIG.get('n_members', 20),
             obs_error_std=ENKF_CONFIG.get('obs_error_std', 0.05),
-            obs_file=OBS_FILE
+            obs_file=OBS_FILE,
         )
+        N_members = enkf_test.n_members
+        if N_members < 2:
+            raise ValueError(f"--enkf-members must be >=2 for true EnKF (got {N_members})")
+        print(f"[EnKF] Initializing {N_members} ensemble members for {CAT_ID}")
 
-    # Spinup for test
+    # Build N CFE model instances. With EnKF, each member starts from a slightly
+    # perturbed initial state so the ensemble has spread from t=0.
+    models = []
+    for i in range(N_members):
+        m = bmi_cfe.BMI_CFE(cfg_file=tmp_cfg)
+        m.load_forcing_file = custom_load_forcing.__get__(m)
+        m.initialize()
+        if ENKF_ENABLED and i > 0:
+            sm_max = m.soil_reservoir["storage_max_m"]
+            gw_max = m.gw_reservoir["storage_max_m"]
+            sm0 = m.soil_reservoir["storage_m"]
+            gw0 = m.gw_reservoir["storage_m"]
+            n00 = float(m.nash_storage[0])
+            n10 = float(m.nash_storage[1])
+            r = enkf_test.init_state_perturb_frac
+            m.soil_reservoir["storage_m"] = float(np.clip(
+                sm0 * (1 + r * enkf_test.rng.standard_normal()), 1e-6, sm_max))
+            m.gw_reservoir["storage_m"]   = float(np.clip(
+                gw0 * (1 + r * enkf_test.rng.standard_normal()), 1e-6, gw_max))
+            # Nash buckets often start at 0 → use small additive jitter instead of multiplicative
+            jitter = max(sm_max * 1e-6, 1e-9)
+            m.nash_storage[0] = max(n00 + jitter * enkf_test.rng.standard_normal(), 0.0)
+            m.nash_storage[1] = max(n10 + jitter * enkf_test.rng.standard_normal(), 0.0)
+        models.append(m)
+
+    df = load_test_forcing()
+
+    # ----- Spinup (with perturbed forcing per member if ensemble) -----
     sp_mask = (df['date'] >= TIME_SPLIT['spinup-for-testing']['start']) & \
               (df['date'] <= TIME_SPLIT['spinup-for-testing']['end'])
-    for p, e in zip(df[sp_mask]['total_precipitation'], df[sp_mask]['potential_evaporation']):
-        model.set_value('atmosphere_water__time_integral_of_precipitation_mass_flux', p / 1000)
-        model.set_value('water_potential_evaporation_flux', e / 1000 / 3600)
-        model.update()
+    df_sp = df[sp_mask]
+    for p, e in zip(df_sp['total_precipitation'], df_sp['potential_evaporation']):
+        if ENKF_ENABLED:
+            p_arr, e_arr = enkf_test.perturb_forcing(p, e)
+        for i, m in enumerate(models):
+            p_i = float(p_arr[i]) if ENKF_ENABLED else p
+            e_i = float(e_arr[i]) if ENKF_ENABLED else e
+            m.set_value('atmosphere_water__time_integral_of_precipitation_mass_flux', p_i / 1000)
+            m.set_value('water_potential_evaporation_flux',                            e_i / 1000 / 3600)
+            m.update()
 
-    # Test period
+    # ----- Test period -----
     t_mask = (df['date'] >= TIME_SPLIT['testing']['start']) & \
              (df['date'] <= TIME_SPLIT['testing']['end'])
     df_test = df[t_mask]
-    outputs = model.get_output_var_names()
+    outputs = models[0].get_output_var_names()
     out_lists = {o: [] for o in outputs}
 
-    for p, e, current_date in zip(df_test['total_precipitation'], 
+    for p, e, current_date in zip(df_test['total_precipitation'],
                                    df_test['potential_evaporation'],
                                    df_test['date']):
-        model.set_value('atmosphere_water__time_integral_of_precipitation_mass_flux', p / 1000)
-        model.set_value('water_potential_evaporation_flux', e / 1000 / 3600)
-        model.update()
-        
-        # Get current forecast runoff
-        forecast_runoff = model.get_value('land_surface_water__runoff_depth') * 1000  # m/h → mm/h
-        
-        # Perform EnKF state update if enabled
-        if ENKF_ENABLED and enkf_test is not None:
-            enkf_test.update_states(model, current_date, forecast_runoff)
-        
-        for o in outputs:
-            out_lists[o].append(model.get_value(o))
+        if ENKF_ENABLED:
+            p_arr, e_arr = enkf_test.perturb_forcing(p, e)
 
-    model.finalize()
+        # Run each member forward one hour, collect ensemble Q_sim
+        ensemble_q_mm_h = np.empty(N_members, dtype=float)
+        for i, m in enumerate(models):
+            p_i = float(p_arr[i]) if ENKF_ENABLED else p
+            e_i = float(e_arr[i]) if ENKF_ENABLED else e
+            m.set_value('atmosphere_water__time_integral_of_precipitation_mass_flux', p_i / 1000)
+            m.set_value('water_potential_evaporation_flux',                            e_i / 1000 / 3600)
+            m.update()
+            ensemble_q_mm_h[i] = m.get_value('land_surface_water__runoff_depth') * 1000  # m/h → mm/h
+
+        # True ensemble EnKF state update
+        if ENKF_ENABLED and enkf_test is not None:
+            enkf_test.update_states(models, current_date, ensemble_q_mm_h)
+
+        # Ensemble mean for output time series
+        for o in outputs:
+            vals = [m.get_value(o) for m in models]
+            out_lists[o].append(float(np.mean(vals)))
+
+    for m in models:
+        m.finalize()
 
     sim_test = np.array(out_lists['land_surface_water__runoff_depth']) * 1000  # m/h → mm/h
     test_dates = pd.to_datetime(df_test['date'].values)
@@ -619,8 +898,12 @@ def run_testing_period(best_param_dict):
     plt.close()
 
     if ENKF_ENABLED and enkf_test is not None:
-        print(f"[DA Stats - Test] Total updates: {enkf_test.n_updates} | "
-              f"Avg increment: {enkf_test.total_increment/max(enkf_test.n_updates,1):.4f} mm/h")
+        print(f"[EnKF Stats - Test] N={enkf_test.n_members} | updates: {enkf_test.n_updates} | "
+              f"mean |innov|: {enkf_test.total_increment/max(enkf_test.n_updates,1):.4f} mm/h | "
+              f"avg Pyy: {enkf_test.avg_pyy:.6f} | "
+              f"avg K_sm={enkf_test.avg_K_sm:+.3e} K_gw={enkf_test.avg_K_gw:+.3e} "
+              f"K_n0={enkf_test.avg_K_n0:+.3e} K_n1={enkf_test.avg_K_n1:+.3e} | "
+              f"Mass lost at GW underflow: {enkf_test.total_overflow_lost_mm:.4f} mm")
 
     return kge_test, nse_test
 
