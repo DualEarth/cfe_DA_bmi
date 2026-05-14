@@ -31,9 +31,13 @@ KRIGING OBSERVATIONS:
   - qkrig: kriging-estimated streamflow (mm/h)
   - variance: kriging variance (observation error)
 
-STATES UPDATED:
-  1. soil_water_sat_fraction: Saturated soil water content [0, 1]
-  2. groundwater_storage_depth: GW reservoir depth [m, >= 0]
+STATES UPDATED (4-state):
+  1. soil_reservoir storage_m   (via BMI: SOIL_CONCEPTUAL_STORAGE)  — 30% of nudge
+  2. gw_reservoir   storage_m   (direct attr)                       — 15% of nudge
+  3. nash_storage[0]            (direct attr, upstream Nash bucket) — 20% of nudge
+  4. nash_storage[1]            (direct attr, feeds stream)         — 35% of nudge
+  Nash[1] gets the heaviest weight because it feeds streamflow the next hour,
+  giving DA the fastest leverage on Q during rising-limb events.
 
 TYPICAL IMPROVEMENTS (from literature):
   - KGE gain: 5-15% (conservative to aggressive DA)
@@ -197,8 +201,9 @@ class EnKFAssimilator:
         Returns:
             dict: Update statistics (innovation, Kalman gain, increments)
         """
-        stats = {"updated": False, "innovation": 0.0, "kalman_gain": 0.0, 
-                 "sm_increment": 0.0, "gw_increment": 0.0}
+        stats = {"updated": False, "innovation": 0.0, "kalman_gain": 0.0,
+                 "sm_increment": 0.0, "gw_increment": 0.0,
+                 "nash0_increment": 0.0, "nash1_increment": 0.0}
         
         # Check if observation exists for this time
         if current_date not in self.obs_dict:
@@ -212,36 +217,49 @@ class EnKFAssimilator:
             return stats
         
         try:
-            # Get current model states (both in meters)
-            #   sm: soil reservoir storage via BMI (set_value path handles this)
-            #   gw: groundwater storage via direct attribute access (not exposed via BMI)
-            sm = model.get_value('SOIL_CONCEPTUAL_STORAGE')
-            gw = model.gw_reservoir["storage_m"]
+            # Get current model states (all in meters of water depth)
+            #   sm    : soil reservoir storage via BMI (set_value path handles this)
+            #   gw    : groundwater storage via direct attribute access (not exposed via BMI)
+            #   nash0 : upstream Nash cascade bucket (lateral flow in transit)
+            #   nash1 : downstream Nash cascade bucket (feeds streamflow)
+            sm    = model.get_value('SOIL_CONCEPTUAL_STORAGE')
+            gw    = model.gw_reservoir["storage_m"]
+            nash0 = float(model.nash_storage[0])
+            nash1 = float(model.nash_storage[1])
 
             sm_max = model.soil_reservoir["storage_max_m"]
             gw_max = model.gw_reservoir["storage_max_m"]
+            # Nash buckets have no fixed storage_max in standard CFE config; clip only at 0.
 
             # Compute innovation (observation minus forecast)
             innovation = obs_runoff - forecast_runoff_mm_h
 
-            # Heuristic forecast variance (simplified — no actual ensemble run here)
-            forecast_var = max(forecast_runoff_mm_h * 0.3, 0.001) ** 2  # 30% spread # this should come from pertubration of your model
+            # Heuristic forecast variance — placeholder until we run a real perturbed ensemble.
+            forecast_var = max(forecast_runoff_mm_h * 0.3, 0.001) ** 2  # 30% spread
 
             # Kalman gain: K = P_f / (P_f + R)
             kalman_gain = forecast_var / (forecast_var + obs_var)
             kalman_gain = np.clip(kalman_gain, 0.0, 1.0)
 
-            # Analysis increment in mm/h (over 1 timestep = 1 hr); convert to meters of storage
-            total_increment_mm = kalman_gain * innovation       # mm of water depth equivalent
-            sm_increment_m = (total_increment_mm * 0.6) / 1000.0  # 60% to soil  → meters
-            gw_increment_m = (total_increment_mm * 0.4) / 1000.0  # 40% to GW    → meters
+            # Analysis increment in mm/h (over 1 timestep = 1 hr); split across 4 states.
+            # Weights: soil 30% / GW 15% / Nash[0] 20% / Nash[1] 35%.
+            # Nash[1] is heaviest because it feeds streamflow next hour — fastest DA leverage.
+            total_increment_mm = kalman_gain * innovation
+            sm_increment_m    = (total_increment_mm * 0.30) / 1000.0
+            gw_increment_m    = (total_increment_mm * 0.15) / 1000.0
+            nash0_increment_m = (total_increment_mm * 0.20) / 1000.0
+            nash1_increment_m = (total_increment_mm * 0.35) / 1000.0
 
-            # Apply increments with physical bounds [0, storage_max_m]
-            sm_new = float(np.clip(sm + sm_increment_m, 0.0, sm_max)) #take an extra variable which absorbs extra and appllies it to nash cascade , can we tune 60/40? consider time period you tune it on
-            gw_new = float(np.clip(gw + gw_increment_m, 0.0, gw_max))
+            # Apply increments with physical bounds.
+            # soil / GW: clip to [0, storage_max_m]
+            # nash    : clip to [0, +inf) — accept the clip loss when bucket is empty
+            sm_new    = float(np.clip(sm    + sm_increment_m,    0.0, sm_max))
+            gw_new    = float(np.clip(gw    + gw_increment_m,    0.0, gw_max))
+            nash0_new = float(np.clip(nash0 + nash0_increment_m, 0.0, None))
+            nash1_new = float(np.clip(nash1 + nash1_increment_m, 0.0, None))
 
-            # Final guard: never write NaN to states (would break CFE for the rest of the run)
-            if np.isnan(sm_new) or np.isnan(gw_new):
+            # Final guard: never write NaN to any of the 4 states (would break CFE for the rest of the run)
+            if np.isnan(sm_new) or np.isnan(gw_new) or np.isnan(nash0_new) or np.isnan(nash1_new):
                 return stats
 
             if sm_new != sm:
@@ -251,16 +269,25 @@ class EnKFAssimilator:
             if gw_new != gw:
                 model.gw_reservoir["storage_m"] = gw_new
                 stats["gw_increment"] = gw_new - gw
-            
+
+            if nash0_new != nash0:
+                model.nash_storage[0] = nash0_new
+                stats["nash0_increment"] = nash0_new - nash0
+
+            if nash1_new != nash1:
+                model.nash_storage[1] = nash1_new
+                stats["nash1_increment"] = nash1_new - nash1
+
             stats["updated"] = True
             stats["innovation"] = innovation
             stats["kalman_gain"] = kalman_gain
             self.n_updates += 1
             self.total_increment += total_increment_mm
-            
+
             print(f"  [DA] {current_date} | obs={obs_runoff:.3f} mm/h | "
                   f"fcst={forecast_runoff_mm_h:.3f} mm/h | innov={innovation:.4f} | "
-                  f"K={kalman_gain:.3f} | ΔSM={stats['sm_increment']:.6f} | ΔGW={stats['gw_increment']:.6f}")
+                  f"K={kalman_gain:.3f} | ΔSM={stats['sm_increment']:.6f} | ΔGW={stats['gw_increment']:.6f} | "
+                  f"ΔN0={stats['nash0_increment']:.6f} | ΔN1={stats['nash1_increment']:.6f}")
             
         except Exception as e:
             print(f"  [DA Warning] State update failed at {current_date}: {e}")
