@@ -209,15 +209,18 @@ class EnKFAssimilator:
         self.rng = np.random.default_rng(rng_seed)
         
         # Load kriging observations
-        # Handles two formats:
-        #   Suma's:  columns = 'datetime', 'qkrig', optional 'variance'
-        #   Kunal's: columns = 'time', 'qkrig_mm_hr' (no variance)
+        # Handles three obs-CSV layouts:
+        #   Suma's:                       columns = 'datetime', 'qkrig', optional 'variance'
+        #   Kunal's (no variance):        columns = 'time', 'qkrig_mm_hr'
+        #   Kunal's with-variance:        columns = 'time', 'qkrig_mm_hr', 'qkrig_variance'
         self.obs_dict = {}
         self.obs_var_dict = {}
         if obs_file and os.path.exists(obs_file):
             obs_df = pd.read_csv(obs_file)
             if 'time' in obs_df.columns and 'qkrig_mm_hr' in obs_df.columns:
                 obs_df = obs_df.rename(columns={'time': 'datetime', 'qkrig_mm_hr': 'qkrig'})
+            if 'qkrig_variance' in obs_df.columns:
+                obs_df = obs_df.rename(columns={'qkrig_variance': 'variance'})
             obs_df['date'] = pd.to_datetime(obs_df['datetime']).dt.strftime('%Y-%m-%d %H:%M:%S')
             has_variance = 'variance' in obs_df.columns
             for _, row in obs_df.iterrows():
