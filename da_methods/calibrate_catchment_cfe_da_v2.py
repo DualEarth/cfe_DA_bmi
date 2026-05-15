@@ -78,19 +78,18 @@ KEY CLI FLAGS
   --enkf-obs-error-std 0.05  Fallback obs std (mm/h) when no variance column
 
 OBSERVATION ERROR VARIANCE R
-  Two modes, switchable via --use-vrugt-r:
-    a) DEFAULT: R = per-hour kriging variance from the obs CSV (or
-       --enkf-obs-error-std^2 fallback when no variance column).
-       Simple, but for our basin the kriging variance values are 8-10x the
-       obs magnitude, which collapses the Kalman gain.
-    b) VRUGT (--use-vrugt-r): Vrugt et al. 2005 (SODA paper)
-       heteroscedastic R scaled by the kriging variance:
-         R(t) = (alpha * y_obs(t))^2 + scale * sigma^2_krig(t)
-       Flow-magnitude term keeps R small at low flow (so DA fires) and
-       larger at peaks (where obs is also more uncertain). Kriging
-       variance brings per-hour catchment-specific info in, scaled down
-       so it does not dominate.
-       Defaults: alpha=0.10 (10% relative error), scale=0.001.
+  Production default: Vrugt et al. 2005 (SODA paper) heteroscedastic R
+  scaled by the kriging variance (per Dr. Frame's suggestion):
+      R(t) = (alpha * y_obs(t))^2 + scale * sigma^2_krig(t)
+  Flow-magnitude term keeps R small at low flow (so DA fires) and larger
+  at peaks (where obs is also more uncertain). Kriging variance brings
+  per-hour catchment-specific info in, scaled so it does not dominate.
+  Defaults: alpha=0.10 (10% relative error per Vrugt), scale=0.001.
+
+  Pass --no-vrugt-r to revert to the raw kriging variance behavior (or
+  --enkf-obs-error-std^2 fallback when no variance column). Not
+  recommended for this basin — raw kriging variance is 8-10x the obs
+  magnitude, which collapses the Kalman gain.
 
 Test-loop perturbation defaults (see EnKFAssimilator.__init__):
     precip:         lognormal multiplier with sigma=0.15, mean=1
@@ -109,19 +108,23 @@ Test-loop perturbation defaults (see EnKFAssimilator.__init__):
 ================================================================================
 USAGE
 ================================================================================
-Production run (test-only, true EnKF, N=20):
+Production run (test-only, true EnKF, N=20, Vrugt R on by default):
   python3 calibrate_catchment_cfe_da_v2.py \\
     --cat-id cat-1016300 \\
     --forcing-dir  /mnt/disk2/suma_helen_poster/nwm_retro_catchment_forcings \\
-    --obs-dir      /mnt/disk2/1400_sites_helene/catchment_ts_03463300 \\
+    --obs-dir      /mnt/disk2/1400_sites_helene/catchment_ts_03463300_with_variance \\
     --cfe-dir      /mnt/disk2/suma_helen_poster/cfe_py \\
     --config-file  /mnt/disk2/suma_helen_poster/run_gpu/cat_03463300_bmi_config_cfe.json \\
     --param-bounds /mnt/disk2/suma_helen_poster/run_gpu/CFE_parameter_bounds.json \\
-    --out-dir      /mnt/disk2/suma_helen_poster/da_results/v2_true_enkf \\
+    --out-dir      /mnt/disk2/suma_helen_poster/da_results/v2_true_enkf_vrugt \\
     --test-forcing-dir1 /mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2023_2024_feb/forcings \\
     --test-forcing-dir2 /mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2024_feb_2025_sep/forcings \\
     --test-only \\
-    --enkf-enabled --enkf-members 20 --enkf-obs-error-std 0.05
+    --enkf-enabled --enkf-members 20
+
+  Use the with-variance obs dir so the per-hour kriging variance enters R(t)
+  via the Vrugt + kriging-scaling formula. Pass --no-vrugt-r to disable the
+  Vrugt R and fall back to raw kriging variance (not recommended).
 
 NOTE: pre-stage best_params.json from Run 3 into the out-dir before --test-only:
   mkdir -p <out-dir>/<cat-id>
@@ -202,7 +205,7 @@ class EnKFAssimilator:
                  soil_process_noise_frac=0.002,
                  gw_process_noise_frac=0.0015,
                  nash_process_noise_frac=0.005,
-                 use_vrugt_r=False, vrugt_alpha=0.10, vrugt_scale=0.001,
+                 use_vrugt_r=True, vrugt_alpha=0.10, vrugt_scale=0.001,
                  rng_seed=None):
         """
         Initialize EnKF assimilator.
@@ -225,11 +228,13 @@ class EnKFAssimilator:
                 soil/GW because Nash spread does not develop naturally (buckets start
                 at 0 in CFE init). Combined with a small additive floor so noise
                 survives when the bucket is empty.
-            use_vrugt_r (bool): If True, compute observation error variance R as a
-                Vrugt 2005 (SODA) heteroscedastic function of flow magnitude, scaled
-                by the kriging variance: R(t) = (alpha * y_obs)^2 + scale * sigma^2_krig.
-                Fixes the case where raw kriging variance is too large to allow DA to
-                fire. Default False (use raw kriging variance / fallback std).
+            use_vrugt_r (bool): If True (default, production setting), compute
+                observation error variance R as a Vrugt 2005 (SODA) heteroscedastic
+                function of flow magnitude, scaled by the kriging variance:
+                R(t) = (alpha * y_obs)^2 + scale * sigma^2_krig. Fixes the case
+                where raw kriging variance is too large to allow DA to fire, and
+                gives the most uniform performance across catchments. Set to False
+                to revert to the raw kriging variance / fallback std behavior.
             vrugt_alpha (float): Relative-error fraction in the Vrugt R. Default 0.10
                 (10% of flow). Standard hydrology DA value (Vrugt et al. 2005).
             vrugt_scale (float): Scaling on the kriging-variance term. Default 0.001.
@@ -751,7 +756,7 @@ class SpotpySetup(object):
                 n_members=ENKF_CONFIG.get('n_members', 20),
                 obs_error_std=ENKF_CONFIG.get('obs_error_std', 0.05),
                 obs_file=OBS_FILE,
-                use_vrugt_r=ENKF_CONFIG.get('use_vrugt_r', False),
+                use_vrugt_r=ENKF_CONFIG.get('use_vrugt_r', True),
                 vrugt_alpha=ENKF_CONFIG.get('vrugt_alpha', 0.10),
                 vrugt_scale=ENKF_CONFIG.get('vrugt_scale', 0.001),
             )
@@ -879,7 +884,7 @@ def run_testing_period(best_param_dict):
             n_members=ENKF_CONFIG.get('n_members', 20),
             obs_error_std=ENKF_CONFIG.get('obs_error_std', 0.05),
             obs_file=OBS_FILE,
-            use_vrugt_r=ENKF_CONFIG.get('use_vrugt_r', False),
+            use_vrugt_r=ENKF_CONFIG.get('use_vrugt_r', True),
             vrugt_alpha=ENKF_CONFIG.get('vrugt_alpha', 0.10),
             vrugt_scale=ENKF_CONFIG.get('vrugt_scale', 0.001),
         )
@@ -1065,8 +1070,9 @@ def main():
     parser.add_argument('--enkf-enabled',       action='store_true', help='Enable EnKF-based Data Assimilation')
     parser.add_argument('--enkf-members',       type=int, default=20,   help='Number of ensemble members (default: 20)')
     parser.add_argument('--enkf-obs-error-std', type=float, default=0.05, help='Observation error std dev in mm/h (default: 0.05)')
-    parser.add_argument('--use-vrugt-r',        action='store_true',
-                        help='Use Vrugt 2005 heteroscedastic R: (alpha*y_obs)^2 + scale*kriging_var')
+    # Vrugt R is ON by default in the production config. Pass --no-vrugt-r to disable.
+    parser.add_argument('--no-vrugt-r',         action='store_true',
+                        help='Disable Vrugt 2005 heteroscedastic R (revert to raw kriging variance)')
     parser.add_argument('--vrugt-alpha',        type=float, default=0.10,
                         help='Relative-error fraction in Vrugt R (default: 0.10)')
     parser.add_argument('--vrugt-scale',        type=float, default=0.001,
@@ -1086,7 +1092,7 @@ def main():
     ENKF_CONFIG = {
         'n_members': args.enkf_members,
         'obs_error_std': args.enkf_obs_error_std,
-        'use_vrugt_r': args.use_vrugt_r,
+        'use_vrugt_r': not args.no_vrugt_r,   # default ON; --no-vrugt-r disables
         'vrugt_alpha': args.vrugt_alpha,
         'vrugt_scale': args.vrugt_scale,
     }
