@@ -78,10 +78,13 @@ KEY CLI FLAGS
   --enkf-obs-error-std 0.05  Fallback obs std (mm/h) when no variance column
 
 Test-loop perturbation defaults (moderate; see EnKFAssimilator.__init__):
-    precip:         ×N(1, 0.15), clipped at 0
+    precip:         lognormal multiplier with sigma=0.15, mean=1
+                    (literature standard; guarantees non-negative)
     PET:            ×N(1, 0.10), clipped at 0
     initial state:  ×N(1, 0.05) on soil/GW; small additive jitter on Nash
-    observation:    additive noise with std sqrt(R)
+    observation:    additive noise with std sqrt(R) (Burgers/Evensen)
+    process noise:  per-timestep on all 4 states, sigma=0.005 (0.5%/hr)
+                    — required by textbook EnKF to prevent ensemble collapse
 
 ================================================================================
 USAGE
@@ -175,7 +178,8 @@ class EnKFAssimilator:
     
     def __init__(self, n_members=20, obs_error_std=0.05, obs_file=None,
                  precip_perturb_frac=0.15, pet_perturb_frac=0.10,
-                 init_state_perturb_frac=0.05, rng_seed=None):
+                 init_state_perturb_frac=0.05,
+                 process_noise_frac=0.005, rng_seed=None):
         """
         Initialize EnKF assimilator.
 
@@ -183,9 +187,12 @@ class EnKFAssimilator:
             n_members (int): Number of ensemble members (>=2 for true EnKF)
             obs_error_std (float): Default obs std dev when CSV lacks 'variance'
             obs_file (str): Path to kriging observations CSV
-            precip_perturb_frac (float): Multiplicative noise std for precip
-            pet_perturb_frac (float): Multiplicative noise std for PET
+            precip_perturb_frac (float): Lognormal sigma for precip noise (mean=1)
+            pet_perturb_frac (float): Multiplicative Gaussian noise std for PET
             init_state_perturb_frac (float): Multiplicative noise std on init states
+            process_noise_frac (float): Per-timestep state process noise std
+                (multiplicative). Prevents ensemble collapse over long runs.
+                Set to 0 to disable. Default 0.005 = 0.5% per hour.
             rng_seed (int or None): Seed for the ensemble random generator
         """
         self.n_members = n_members
@@ -194,6 +201,7 @@ class EnKFAssimilator:
         self.precip_perturb_frac     = precip_perturb_frac
         self.pet_perturb_frac        = pet_perturb_frac
         self.init_state_perturb_frac = init_state_perturb_frac
+        self.process_noise_frac      = process_noise_frac
         self.rng = np.random.default_rng(rng_seed)
         
         # Load kriging observations
@@ -230,11 +238,24 @@ class EnKFAssimilator:
     # Ensemble helpers (used by the test loop)
     # ------------------------------------------------------------------
     def perturb_forcing(self, precip_mm_h, pet_mm_h):
-        """Return arrays of length n_members with multiplicative noise on (P, PET)."""
+        """Return arrays of length n_members with perturbed (P, PET).
+
+        Precip uses **lognormal** noise (literature standard for precip in
+        hydrology DA — Clark 2008, Renard 2010). Guarantees non-negative
+        precip and matches the heavy-tailed empirical distribution of
+        precip errors. Lognormal is parameterized so the multiplier has
+        E[noise] = 1 (mu = -sigma²/2).
+
+        PET uses multiplicative Gaussian (more symmetric distribution).
+        """
         N = self.n_members
-        p = precip_mm_h * (1.0 + self.precip_perturb_frac * self.rng.standard_normal(N))
-        e = pet_mm_h    * (1.0 + self.pet_perturb_frac    * self.rng.standard_normal(N))
-        return np.maximum(p, 0.0), np.maximum(e, 0.0)
+        sigma_p = self.precip_perturb_frac
+        mu_p    = -0.5 * sigma_p ** 2  # makes E[exp(mu + sigma·Z)] = 1
+        p = precip_mm_h * self.rng.lognormal(mu_p, sigma_p, N)
+        # Lognormal × non-negative is non-negative; no clipping needed.
+
+        e = pet_mm_h * (1.0 + self.pet_perturb_frac * self.rng.standard_normal(N))
+        return p, np.maximum(e, 0.0)
 
     def perturb_initial_state(self, value, upper=None, floor=1e-6):
         """Multiplicatively perturb a single initial-state scalar across N members."""
@@ -243,6 +264,43 @@ class EnKFAssimilator:
         if upper is not None:
             v = np.minimum(v, upper)
         return v
+
+    def add_process_noise(self, models):
+        """Inject small per-timestep state perturbations on every member.
+
+        Process noise (the Q matrix in classical Kalman / "model error" term in
+        EnKF) is required by textbook EnKF to prevent ensemble collapse over
+        long runs. Without it, the analysis pulls all members toward similar
+        states, spread shrinks, Pyy → 0, and the filter goes blind.
+
+        soil/GW: multiplicative noise scaled by current storage.
+        Nash: multiplicative + small additive floor (so noise survives even
+              when nash_storage starts at 0 — otherwise the multiplicative
+              term is 0 and members stay identical).
+        """
+        if self.process_noise_frac <= 0:
+            return
+        sigma = self.process_noise_frac
+        for m in models:
+            sm_max = m.soil_reservoir["storage_max_m"]
+            gw_max = m.gw_reservoir["storage_max_m"]
+            sm0 = m.soil_reservoir["storage_m"]
+            gw0 = m.gw_reservoir["storage_m"]
+            n00 = float(m.nash_storage[0])
+            n10 = float(m.nash_storage[1])
+            # Additive floor for nash, scaled to a tiny fraction of soil cap
+            # — small enough to never dominate, large enough to survive at zero.
+            nash_floor = max(sm_max * 1e-4, 1e-7)
+            m.soil_reservoir["storage_m"] = float(np.clip(
+                sm0 * (1.0 + sigma * self.rng.standard_normal()), 0.0, sm_max))
+            m.gw_reservoir["storage_m"]   = float(np.clip(
+                gw0 * (1.0 + sigma * self.rng.standard_normal()), 0.0, gw_max))
+            m.nash_storage[0] = max(
+                n00 * (1.0 + sigma * self.rng.standard_normal())
+                + nash_floor * self.rng.standard_normal(), 0.0)
+            m.nash_storage[1] = max(
+                n10 * (1.0 + sigma * self.rng.standard_normal())
+                + nash_floor * self.rng.standard_normal(), 0.0)
 
     # ------------------------------------------------------------------
     # True stochastic EnKF (Burgers / van Leeuwen / Evensen 1998)
@@ -794,6 +852,9 @@ def run_testing_period(best_param_dict):
             m.set_value('atmosphere_water__time_integral_of_precipitation_mass_flux', p_i / 1000)
             m.set_value('water_potential_evaporation_flux',                            e_i / 1000 / 3600)
             m.update()
+        # Process noise during spinup keeps spread alive before DA starts
+        if ENKF_ENABLED:
+            enkf_test.add_process_noise(models)
 
     # ----- Test period -----
     t_mask = (df['date'] >= TIME_SPLIT['testing']['start']) & \
@@ -821,6 +882,11 @@ def run_testing_period(best_param_dict):
         # True ensemble EnKF state update
         if ENKF_ENABLED and enkf_test is not None:
             enkf_test.update_states(models, current_date, ensemble_q_mm_h)
+
+        # Process noise on analyzed states — keeps ensemble spread alive across
+        # the long test run so the filter doesn't collapse (Pyy → 0).
+        if ENKF_ENABLED and enkf_test is not None:
+            enkf_test.add_process_noise(models)
 
         # Recorded Q_sim at time t is the FORECAST (pre-analysis): it was computed
         # by model.update() above, before this hour's DA touched the states. DA
