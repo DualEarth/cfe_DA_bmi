@@ -77,14 +77,19 @@ KEY CLI FLAGS
   --enkf-members 20        N ensemble members in the test loop (>=2 required)
   --enkf-obs-error-std 0.05  Fallback obs std (mm/h) when no variance column
 
-Test-loop perturbation defaults (moderate; see EnKFAssimilator.__init__):
+Test-loop perturbation defaults (see EnKFAssimilator.__init__):
     precip:         lognormal multiplier with sigma=0.15, mean=1
                     (literature standard; guarantees non-negative)
     PET:            ×N(1, 0.10), clipped at 0
     initial state:  ×N(1, 0.05) on soil/GW; small additive jitter on Nash
     observation:    additive noise with std sqrt(R) (Burgers/Evensen)
-    process noise:  per-timestep on all 4 states, sigma=0.005 (0.5%/hr)
-                    — required by textbook EnKF to prevent ensemble collapse
+    process noise per state (per-hour multiplicative; prevents ensemble
+    collapse — required by textbook EnKF):
+      soil   : 0.002  (0.2%)    slow-evolving, small noise sufficient
+      GW     : 0.0015 (0.15%)   slowest state
+      Nash   : 0.005  (0.5%)    + additive floor; needs more because nash
+                                spread does not develop naturally
+    Magnitudes match NWC-CUAHSI/data_assimilation_with_bmi reference impl.
 
 ================================================================================
 USAGE
@@ -179,7 +184,10 @@ class EnKFAssimilator:
     def __init__(self, n_members=20, obs_error_std=0.05, obs_file=None,
                  precip_perturb_frac=0.15, pet_perturb_frac=0.10,
                  init_state_perturb_frac=0.05,
-                 process_noise_frac=0.005, rng_seed=None):
+                 soil_process_noise_frac=0.002,
+                 gw_process_noise_frac=0.0015,
+                 nash_process_noise_frac=0.005,
+                 rng_seed=None):
         """
         Initialize EnKF assimilator.
 
@@ -190,9 +198,17 @@ class EnKFAssimilator:
             precip_perturb_frac (float): Lognormal sigma for precip noise (mean=1)
             pet_perturb_frac (float): Multiplicative Gaussian noise std for PET
             init_state_perturb_frac (float): Multiplicative noise std on init states
-            process_noise_frac (float): Per-timestep state process noise std
-                (multiplicative). Prevents ensemble collapse over long runs.
-                Set to 0 to disable. Default 0.005 = 0.5% per hour.
+            soil_process_noise_frac (float): Per-hour multiplicative process noise std
+                for soil reservoir. Default 0.002 (0.2%) — soil is slow-evolving so a
+                small noise is sufficient and avoids cumulative-random-walk drift.
+                Matches NWC-CUAHSI reference implementation.
+            gw_process_noise_frac (float): Per-hour multiplicative process noise std
+                for GW reservoir. Default 0.0015 (0.15%) — slowest state, smallest noise.
+            nash_process_noise_frac (float): Per-hour multiplicative process noise std
+                for Nash[0] and Nash[1]. Default 0.005 (0.5%) — needed larger than
+                soil/GW because Nash spread does not develop naturally (buckets start
+                at 0 in CFE init). Combined with a small additive floor so noise
+                survives when the bucket is empty.
             rng_seed (int or None): Seed for the ensemble random generator
         """
         self.n_members = n_members
@@ -201,7 +217,9 @@ class EnKFAssimilator:
         self.precip_perturb_frac     = precip_perturb_frac
         self.pet_perturb_frac        = pet_perturb_frac
         self.init_state_perturb_frac = init_state_perturb_frac
-        self.process_noise_frac      = process_noise_frac
+        self.soil_process_noise_frac = soil_process_noise_frac
+        self.gw_process_noise_frac   = gw_process_noise_frac
+        self.nash_process_noise_frac = nash_process_noise_frac
         self.rng = np.random.default_rng(rng_seed)
         
         # Load kriging observations
@@ -266,21 +284,25 @@ class EnKFAssimilator:
         return v
 
     def add_process_noise(self, models):
-        """Inject small per-timestep state perturbations on every member.
+        """Inject per-timestep state perturbations on every member.
 
         Process noise (the Q matrix in classical Kalman / "model error" term in
         EnKF) is required by textbook EnKF to prevent ensemble collapse over
         long runs. Without it, the analysis pulls all members toward similar
         states, spread shrinks, Pyy → 0, and the filter goes blind.
 
-        soil/GW: multiplicative noise scaled by current storage.
-        Nash: multiplicative + small additive floor (so noise survives even
-              when nash_storage starts at 0 — otherwise the multiplicative
-              term is 0 and members stay identical).
+        Each state gets its own σ (calibrated by physical response time):
+          soil  : 0.2%/hr  — slow-evolving; small noise prevents random-walk drift
+          GW    : 0.15%/hr — slowest state
+          Nash  : 0.5%/hr  + small additive floor — needs more because Nash
+                  spread does not develop naturally (buckets start at 0).
+        Magnitudes match NWC-CUAHSI/data_assimilation_with_bmi reference impl.
         """
-        if self.process_noise_frac <= 0:
+        sigma_soil = self.soil_process_noise_frac
+        sigma_gw   = self.gw_process_noise_frac
+        sigma_nash = self.nash_process_noise_frac
+        if sigma_soil <= 0 and sigma_gw <= 0 and sigma_nash <= 0:
             return
-        sigma = self.process_noise_frac
         for m in models:
             sm_max = m.soil_reservoir["storage_max_m"]
             gw_max = m.gw_reservoir["storage_max_m"]
@@ -288,19 +310,23 @@ class EnKFAssimilator:
             gw0 = m.gw_reservoir["storage_m"]
             n00 = float(m.nash_storage[0])
             n10 = float(m.nash_storage[1])
-            # Additive floor for nash, scaled to a tiny fraction of soil cap
-            # — small enough to never dominate, large enough to survive at zero.
+            # Additive floor for nash so noise survives at zero.
             nash_floor = max(sm_max * 1e-4, 1e-7)
-            m.soil_reservoir["storage_m"] = float(np.clip(
-                sm0 * (1.0 + sigma * self.rng.standard_normal()), 0.0, sm_max))
-            m.gw_reservoir["storage_m"]   = float(np.clip(
-                gw0 * (1.0 + sigma * self.rng.standard_normal()), 0.0, gw_max))
-            m.nash_storage[0] = max(
-                n00 * (1.0 + sigma * self.rng.standard_normal())
-                + nash_floor * self.rng.standard_normal(), 0.0)
-            m.nash_storage[1] = max(
-                n10 * (1.0 + sigma * self.rng.standard_normal())
-                + nash_floor * self.rng.standard_normal(), 0.0)
+            if sigma_soil > 0:
+                m.soil_reservoir["storage_m"] = float(np.clip(
+                    sm0 * (1.0 + sigma_soil * self.rng.standard_normal()),
+                    0.0, sm_max))
+            if sigma_gw > 0:
+                m.gw_reservoir["storage_m"] = float(np.clip(
+                    gw0 * (1.0 + sigma_gw * self.rng.standard_normal()),
+                    0.0, gw_max))
+            if sigma_nash > 0:
+                m.nash_storage[0] = max(
+                    n00 * (1.0 + sigma_nash * self.rng.standard_normal())
+                    + nash_floor * self.rng.standard_normal(), 0.0)
+                m.nash_storage[1] = max(
+                    n10 * (1.0 + sigma_nash * self.rng.standard_normal())
+                    + nash_floor * self.rng.standard_normal(), 0.0)
 
     # ------------------------------------------------------------------
     # True stochastic EnKF (Burgers / van Leeuwen / Evensen 1998)
