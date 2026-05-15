@@ -822,7 +822,11 @@ def run_testing_period(best_param_dict):
         if ENKF_ENABLED and enkf_test is not None:
             enkf_test.update_states(models, current_date, ensemble_q_mm_h)
 
-        # Ensemble mean for output time series
+        # Recorded Q_sim at time t is the FORECAST (pre-analysis): it was computed
+        # by model.update() above, before this hour's DA touched the states. DA
+        # affects the recorded series only from t+1 onward, via the analyzed states
+        # carried into the next iteration. This is standard sequential-filter
+        # forecast verification — comparing Q_sim(t) to obs(t) is not circular.
         for o in outputs:
             vals = [m.get_value(o) for m in models]
             out_lists[o].append(float(np.mean(vals)))
