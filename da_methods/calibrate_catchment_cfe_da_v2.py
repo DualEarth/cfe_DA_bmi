@@ -77,6 +77,21 @@ KEY CLI FLAGS
   --enkf-members 20        N ensemble members in the test loop (>=2 required)
   --enkf-obs-error-std 0.05  Fallback obs std (mm/h) when no variance column
 
+OBSERVATION ERROR VARIANCE R
+  Two modes, switchable via --use-vrugt-r:
+    a) DEFAULT: R = per-hour kriging variance from the obs CSV (or
+       --enkf-obs-error-std^2 fallback when no variance column).
+       Simple, but for our basin the kriging variance values are 8-10x the
+       obs magnitude, which collapses the Kalman gain.
+    b) VRUGT (--use-vrugt-r): Vrugt et al. 2005 (SODA paper)
+       heteroscedastic R scaled by the kriging variance:
+         R(t) = (alpha * y_obs(t))^2 + scale * sigma^2_krig(t)
+       Flow-magnitude term keeps R small at low flow (so DA fires) and
+       larger at peaks (where obs is also more uncertain). Kriging
+       variance brings per-hour catchment-specific info in, scaled down
+       so it does not dominate.
+       Defaults: alpha=0.10 (10% relative error), scale=0.001.
+
 Test-loop perturbation defaults (see EnKFAssimilator.__init__):
     precip:         lognormal multiplier with sigma=0.15, mean=1
                     (literature standard; guarantees non-negative)
@@ -187,6 +202,7 @@ class EnKFAssimilator:
                  soil_process_noise_frac=0.002,
                  gw_process_noise_frac=0.0015,
                  nash_process_noise_frac=0.005,
+                 use_vrugt_r=False, vrugt_alpha=0.10, vrugt_scale=0.001,
                  rng_seed=None):
         """
         Initialize EnKF assimilator.
@@ -209,6 +225,16 @@ class EnKFAssimilator:
                 soil/GW because Nash spread does not develop naturally (buckets start
                 at 0 in CFE init). Combined with a small additive floor so noise
                 survives when the bucket is empty.
+            use_vrugt_r (bool): If True, compute observation error variance R as a
+                Vrugt 2005 (SODA) heteroscedastic function of flow magnitude, scaled
+                by the kriging variance: R(t) = (alpha * y_obs)^2 + scale * sigma^2_krig.
+                Fixes the case where raw kriging variance is too large to allow DA to
+                fire. Default False (use raw kriging variance / fallback std).
+            vrugt_alpha (float): Relative-error fraction in the Vrugt R. Default 0.10
+                (10% of flow). Standard hydrology DA value (Vrugt et al. 2005).
+            vrugt_scale (float): Scaling on the kriging-variance term. Default 0.001.
+                Picked so the kriging contribution is the same order of magnitude as
+                the flow-magnitude term at typical flows for this basin.
             rng_seed (int or None): Seed for the ensemble random generator
         """
         self.n_members = n_members
@@ -220,6 +246,9 @@ class EnKFAssimilator:
         self.soil_process_noise_frac = soil_process_noise_frac
         self.gw_process_noise_frac   = gw_process_noise_frac
         self.nash_process_noise_frac = nash_process_noise_frac
+        self.use_vrugt_r             = use_vrugt_r
+        self.vrugt_alpha             = vrugt_alpha
+        self.vrugt_scale             = vrugt_scale
         self.rng = np.random.default_rng(rng_seed)
         
         # Load kriging observations
@@ -238,8 +267,23 @@ class EnKFAssimilator:
             obs_df['date'] = pd.to_datetime(obs_df['datetime']).dt.strftime('%Y-%m-%d %H:%M:%S')
             has_variance = 'variance' in obs_df.columns
             for _, row in obs_df.iterrows():
-                self.obs_dict[row['date']] = row['qkrig']
-                self.obs_var_dict[row['date']] = row['variance'] if has_variance else self.obs_error_var
+                y_obs    = row['qkrig']
+                krig_var = row['variance'] if has_variance else self.obs_error_var
+                self.obs_dict[row['date']] = y_obs
+                # Vrugt et al. 2005 (SODA) heteroscedastic R, scaled by kriging
+                # variance per Frame's suggestion:
+                #   R(t) = (alpha * y_obs(t))^2 + scale * sigma^2_krig(t)
+                # Flow-magnitude term makes R small at low flow (so DA fires),
+                # larger at peaks (where obs is also more uncertain). Kriging
+                # variance brings per-hour catchment-specific info in, scaled
+                # down so it doesn't dominate.
+                if self.use_vrugt_r and not pd.isna(y_obs):
+                    self.obs_var_dict[row['date']] = (
+                        (self.vrugt_alpha * y_obs) ** 2
+                        + self.vrugt_scale * krig_var
+                    )
+                else:
+                    self.obs_var_dict[row['date']] = krig_var
         
         self.n_updates = 0
         self.total_increment = 0.0
@@ -706,7 +750,10 @@ class SpotpySetup(object):
             self.enkf = EnKFAssimilator(
                 n_members=ENKF_CONFIG.get('n_members', 20),
                 obs_error_std=ENKF_CONFIG.get('obs_error_std', 0.05),
-                obs_file=OBS_FILE
+                obs_file=OBS_FILE,
+                use_vrugt_r=ENKF_CONFIG.get('use_vrugt_r', False),
+                vrugt_alpha=ENKF_CONFIG.get('vrugt_alpha', 0.10),
+                vrugt_scale=ENKF_CONFIG.get('vrugt_scale', 0.001),
             )
 
     def parameters(self):
@@ -832,6 +879,9 @@ def run_testing_period(best_param_dict):
             n_members=ENKF_CONFIG.get('n_members', 20),
             obs_error_std=ENKF_CONFIG.get('obs_error_std', 0.05),
             obs_file=OBS_FILE,
+            use_vrugt_r=ENKF_CONFIG.get('use_vrugt_r', False),
+            vrugt_alpha=ENKF_CONFIG.get('vrugt_alpha', 0.10),
+            vrugt_scale=ENKF_CONFIG.get('vrugt_scale', 0.001),
         )
         N_members = enkf_test.n_members
         if N_members < 2:
@@ -1015,6 +1065,12 @@ def main():
     parser.add_argument('--enkf-enabled',       action='store_true', help='Enable EnKF-based Data Assimilation')
     parser.add_argument('--enkf-members',       type=int, default=20,   help='Number of ensemble members (default: 20)')
     parser.add_argument('--enkf-obs-error-std', type=float, default=0.05, help='Observation error std dev in mm/h (default: 0.05)')
+    parser.add_argument('--use-vrugt-r',        action='store_true',
+                        help='Use Vrugt 2005 heteroscedastic R: (alpha*y_obs)^2 + scale*kriging_var')
+    parser.add_argument('--vrugt-alpha',        type=float, default=0.10,
+                        help='Relative-error fraction in Vrugt R (default: 0.10)')
+    parser.add_argument('--vrugt-scale',        type=float, default=0.001,
+                        help='Scaling on kriging-variance term in Vrugt R (default: 0.001)')
     args = parser.parse_args()
 
     CAT_ID            = args.cat_id
@@ -1030,13 +1086,20 @@ def main():
     ENKF_CONFIG = {
         'n_members': args.enkf_members,
         'obs_error_std': args.enkf_obs_error_std,
+        'use_vrugt_r': args.use_vrugt_r,
+        'vrugt_alpha': args.vrugt_alpha,
+        'vrugt_scale': args.vrugt_scale,
     }
-    
+
     if ENKF_ENABLED:
         print(f"\n{'='*80}")
         print(f"EnKF Data Assimilation ENABLED")
         print(f"  Ensemble members: {ENKF_CONFIG['n_members']}")
         print(f"  Observation error std dev: {ENKF_CONFIG['obs_error_std']} mm/h")
+        if ENKF_CONFIG['use_vrugt_r']:
+            print(f"  Vrugt R: alpha={ENKF_CONFIG['vrugt_alpha']}, scale={ENKF_CONFIG['vrugt_scale']}")
+        else:
+            print(f"  Vrugt R: disabled (using raw kriging variance / fallback)")
         print(f"{'='*80}\n")
 
     # Build combined test forcing file if both dirs provided
