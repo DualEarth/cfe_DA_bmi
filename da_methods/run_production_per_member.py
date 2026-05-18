@@ -138,6 +138,7 @@ def run(args, bmi_cfe, EnKFAssimilator):
 
     # Build N CFE instances; perturb initial states (member 0 left clean)
     models = []
+    init_states_per_member = []  # capture initial-state snapshot after perturbation
     for i in range(N):
         m = bmi_cfe.BMI_CFE(cfg_file=tmp_cfg)
         m.load_forcing_file = custom_load_forcing.__get__(m)
@@ -157,6 +158,15 @@ def run(args, bmi_cfe, EnKFAssimilator):
             jitter = max(sm_max * 1e-6, 1e-9)
             m.nash_storage[0] = max(n00 + jitter * enkf.rng.standard_normal(), 0.0)
             m.nash_storage[1] = max(n10 + jitter * enkf.rng.standard_normal(), 0.0)
+        # Snapshot the (possibly-perturbed) initial state for this member
+        init_states_per_member.append({
+            "soil_m":   float(m.soil_reservoir["storage_m"]),
+            "gw_m":     float(m.gw_reservoir["storage_m"]),
+            "nash0_m":  float(m.nash_storage[0]),
+            "nash1_m":  float(m.nash_storage[1]),
+            "soil_max_m": float(m.soil_reservoir["storage_max_m"]),
+            "gw_max_m":   float(m.gw_reservoir["storage_max_m"]),
+        })
         models.append(m)
 
     # SKIP SPINUP — go directly to the test period (matches sensitivity-script setup)
@@ -165,6 +175,8 @@ def run(args, bmi_cfe, EnKFAssimilator):
     df_test = df[t_mask]
     n_hours = len(df_test)
     q_matrix = np.full((n_hours, N), np.nan, dtype=float)
+    precip_matrix = np.full((n_hours, N), np.nan, dtype=float)  # mm/h per member
+    pet_matrix    = np.full((n_hours, N), np.nan, dtype=float)  # mm/h per member
     dates_out = df_test['date'].values
 
     for h, (p, e, current_date) in enumerate(zip(
@@ -174,6 +186,9 @@ def run(args, bmi_cfe, EnKFAssimilator):
 
         # Perturb forcing per member
         p_arr, e_arr = enkf.perturb_forcing(p, e)
+        # Capture the per-member perturbed forcing for later plotting/diagnostics
+        precip_matrix[h, :] = p_arr
+        pet_matrix[h, :]    = e_arr
 
         # Advance each member one hour
         ensemble_q = np.empty(N, dtype=float)
@@ -197,14 +212,40 @@ def run(args, bmi_cfe, EnKFAssimilator):
     for m in models:
         m.finalize()
 
-    # Save per-member CSV
+    # ----- Save per-member CSVs -----
+    def _save_matrix(matrix, suffix):
+        out = {'date': dates_out}
+        for i in range(N):
+            out[f'member_{i:02d}'] = matrix[:, i]
+        df_out = pd.DataFrame(out)
+        out_path = out_dir / f'{cat_id}_production_per_member_{suffix}.csv'
+        df_out.to_csv(out_path, index=False)
+        return out_path
+
+    # Streamflow outputs
+    q_path = out_dir / f'{cat_id}_production_per_member.csv'
     out = {'date': dates_out}
     for i in range(N):
         out[f'member_{i:02d}'] = q_matrix[:, i]
-    df_out = pd.DataFrame(out)
-    out_path = out_dir / f'{cat_id}_production_per_member.csv'
-    df_out.to_csv(out_path, index=False)
-    print(f"[per-member] saved {out_path}")
+    pd.DataFrame(out).to_csv(q_path, index=False)
+    print(f"[per-member] saved {q_path}")
+
+    # Perturbed forcings (so each member's actual inputs are recoverable)
+    precip_path = _save_matrix(precip_matrix, "precip")
+    pet_path    = _save_matrix(pet_matrix,    "pet")
+    print(f"[per-member] saved {precip_path}")
+    print(f"[per-member] saved {pet_path}")
+
+    # Initial states (small, JSON is fine)
+    init_states_path = out_dir / f'{cat_id}_production_per_member_initial_states.json'
+    with open(init_states_path, 'w') as f:
+        json.dump({
+            "catchment_id": cat_id,
+            "n_members": N,
+            "members": {f"member_{i:02d}": init_states_per_member[i] for i in range(N)},
+        }, f, indent=2)
+    print(f"[per-member] saved {init_states_path}")
+
     print(f"[per-member] ensemble mean spread over test period: "
           f"{float(q_matrix.std(axis=1).mean()):.5f} mm/h")
 
