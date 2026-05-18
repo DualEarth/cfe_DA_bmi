@@ -108,15 +108,15 @@ def main():
         q_data_max = max(q_data_max, float(np.nanmax(obs_vals[omask])))
     q_ymax = q_data_max * 1.10
 
-    fig = plt.figure(figsize=(22, 18))
-    outer = gridspec.GridSpec(N_ROWS, N_COLS, hspace=0.55, wspace=0.30)
+    fig = plt.figure(figsize=(22, 19))
+    outer = gridspec.GridSpec(N_ROWS, N_COLS, hspace=0.75, wspace=0.30)
 
     for i in range(N):
         col = member_cols[i]
         row, c = divmod(i, N_COLS)
         # Each member cell is a 2-row inner grid (precip+PET on top, Q on bottom)
         inner = gridspec.GridSpecFromSubplotSpec(
-            2, 1, subplot_spec=outer[row, c], hspace=0.05, height_ratios=[1.0, 1.6])
+            2, 1, subplot_spec=outer[row, c], hspace=0.20, height_ratios=[1.0, 1.6])
 
         # --- Top sub-panel: precip bars + PET line on twinx ---
         ax_top = fig.add_subplot(inner[0])
@@ -134,13 +134,14 @@ def main():
         ax_pet.set_ylim(0, e_ymax)
         ax_pet.set_ylabel("PET (mm/h)", fontsize=8, color=PET_COLOR)
         ax_pet.tick_params(axis="y", labelsize=7, labelcolor=PET_COLOR)
-        # Title with member name + initial state values
+        # Title: member name on line 1, initial states on line 2 (avoids overlap with neighbors)
         s = init_states.get(col, {})
-        title = (f"{col}  |  soil={s.get('soil_m', float('nan')):.3f} m, "
-                 f"GW={s.get('gw_m', float('nan')):.4f} m, "
-                 f"Nash[0]={s.get('nash0_m', float('nan')):.2e}, "
-                 f"Nash[1]={s.get('nash1_m', float('nan')):.2e}")
-        ax_top.set_title(title, fontsize=8.5, loc="left")
+        title = (f"{col}\n"
+                 f"soil={s.get('soil_m', float('nan')):.3f} m  |  "
+                 f"GW={s.get('gw_m', float('nan')):.4f} m  |  "
+                 f"Nash[0]={s.get('nash0_m', float('nan')):.1e}  "
+                 f"Nash[1]={s.get('nash1_m', float('nan')):.1e}")
+        ax_top.set_title(title, fontsize=8, loc="left")
 
         # --- Bottom sub-panel: Q + obs (shares x-axis with top) ---
         ax_bot = fig.add_subplot(inner[1], sharex=ax_top)
