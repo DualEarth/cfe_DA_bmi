@@ -7,7 +7,7 @@ Three categories (matching Suma's request):
     3. Hydrological states       (green)
 
 For each category, all 20 ensemble members are shown as a shaded band
-(10th-90th percentile fill) plus a thicker median line in the same color.
+(min-max envelope fill) plus a thicker median line in the same color.
 Qkrig observation overlaid in black. Hurricane Helene peak window shaded
 in pink. Styled after the Battula et al. ensemble-forecast figure.
 
@@ -81,14 +81,16 @@ def plot_panel(ax, obs_dates, obs_vals, log_y=False):
         mask = (d >= PLOT_START) & (d <= PLOT_END)
         if mask.sum() == 0:
             continue
-        # 10th-90th percentile band across members per timestep
+        # Min-max envelope across all 20 members per timestep (widest possible band).
+        # Bands are visually narrow even with min/max because perturbations are
+        # tuned for production EnKF stability, not for max visible spread.
         q_window = q[mask, :]
-        p10 = np.nanpercentile(q_window, 10, axis=1)
-        p90 = np.nanpercentile(q_window, 90, axis=1)
+        qmin   = np.nanmin(q_window,    axis=1)
+        qmax   = np.nanmax(q_window,    axis=1)
         median = np.nanmedian(q_window, axis=1)
 
-        ax.fill_between(d[mask], p10, p90,
-                        color=color, alpha=0.25, zorder=2,
+        ax.fill_between(d[mask], qmin, qmax,
+                        color=color, alpha=0.30, zorder=2,
                         edgecolor="none")
         line, = ax.plot(d[mask], median,
                         color=color, lw=1.7, alpha=0.95, zorder=3,
@@ -134,7 +136,7 @@ def main():
     fig.suptitle(
         f"Ensemble forecast by perturbation category - {CAT} - "
         f"Sep 20 - Oct 5, 2024 (Hurricane Helene window)\n"
-        "Shaded bands = 10th-90th percentile across 20 members.   "
+        "Shaded bands = min-max envelope across 20 members.   "
         "Lines = ensemble median.   DA off in all three sub-experiments.",
         fontsize=11, y=0.995,
     )
@@ -149,7 +151,7 @@ def main():
     fig.suptitle(
         f"Ensemble forecast by perturbation category - {CAT} - log-scale q - "
         f"Sep 20 - Oct 5, 2024 (Hurricane Helene window)\n"
-        "Shaded bands = 10th-90th percentile across 20 members.   "
+        "Shaded bands = min-max envelope across 20 members.   "
         "Lines = ensemble median.   DA off in all three sub-experiments.",
         fontsize=11, y=0.995,
     )
