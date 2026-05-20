@@ -130,6 +130,16 @@ def plot_panel(ax, t0, df_da, df_ol, member_cols, obs_series, title_extra=""):
     ax.legend(loc='upper right', fontsize=9, frameon=True, framealpha=0.9)
 
 
+def snap_to_nearest(t0, available_times):
+    """Return the available issue_time closest to t0."""
+    times = pd.DatetimeIndex(available_times)
+    idx = np.abs((times - t0).total_seconds()).argmin()
+    snapped = times[idx]
+    if snapped != t0:
+        print(f"  Snapped {t0} -> {snapped} (nearest available issue time)")
+    return snapped
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cat-id',        default="cat-1016300")
@@ -137,6 +147,12 @@ def main():
                         help='Dir holding <cat>/<cat>_lead_time_forecasts_{da,openloop}.csv')
     parser.add_argument('--da-dir',        default=DEFAULT_DA_DIR,
                         help='Dir holding <cat>/<cat>_test_results.csv (for obs)')
+    parser.add_argument('--helene-t0',     default=None,
+                        help='Issue time for the Helene panel (default: 2024-09-26 12:00:00, '
+                             'snapped to nearest available)')
+    parser.add_argument('--lowflow-t0',    default=None,
+                        help='Issue time for the low-flow panel (default: 2024-03-15 00:00:00, '
+                             'snapped to nearest available)')
     args = parser.parse_args()
 
     global CAT, LEADTIME_DIR, DA_DIR, OUT_PNG
@@ -152,12 +168,19 @@ def main():
     df_ol, _      = load_forecasts(ol_path)
     obs_series = load_obs()
 
+    available = df_da['issue_time'].unique()
+    helene_t0  = snap_to_nearest(
+        pd.Timestamp(args.helene_t0)  if args.helene_t0  else HELENE_T0,  available)
+    lowflow_t0 = snap_to_nearest(
+        pd.Timestamp(args.lowflow_t0) if args.lowflow_t0 else pd.Timestamp("2024-03-15 00:00:00"),
+        available)
+
     fig, (ax_h, ax_l) = plt.subplots(1, 2, figsize=(20, 7))
 
-    plot_panel(ax_h, HELENE_T0, df_da, df_ol, m_cols, obs_series,
-               title_extra=f"Helene peak issue time — {HELENE_T0.strftime('%Y-%m-%d %H:%M')}")
-    plot_panel(ax_l, LOWFLOW_T0, df_da, df_ol, m_cols, obs_series,
-               title_extra=f"Low-flow issue time — {LOWFLOW_T0.strftime('%Y-%m-%d %H:%M')}")
+    plot_panel(ax_h, helene_t0, df_da, df_ol, m_cols, obs_series,
+               title_extra=f"Helene peak issue time — {helene_t0.strftime('%Y-%m-%d %H:%M')}")
+    plot_panel(ax_l, lowflow_t0, df_da, df_ol, m_cols, obs_series,
+               title_extra=f"Low-flow issue time — {lowflow_t0.strftime('%Y-%m-%d %H:%M')}")
 
     fig.suptitle(
         f"Per-issue-time forecast hydrograph — {CAT}\n"
