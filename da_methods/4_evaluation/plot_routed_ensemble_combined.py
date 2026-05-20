@@ -31,7 +31,7 @@ import matplotlib.dates as mdates
 HELENE_START = pd.Timestamp("2024-09-25 00:00:00")
 HELENE_END   = pd.Timestamp("2024-09-29 00:00:00")
 ZOOM_START   = pd.Timestamp("2024-09-24 00:00:00")
-ZOOM_END     = pd.Timestamp("2024-09-30 00:00:00")
+ZOOM_END     = pd.Timestamp("2024-09-28 18:00:00")  # cut trailing ensemble bump
 
 COLOR_OBS     = "black"
 COLOR_VRUGT   = "#1f77b4"   # blue
@@ -131,8 +131,10 @@ def plot_zoom(ax, dates, obs, sim_v, sim_nv, kge_v, kge_nv, env=None):
 
     peak_usgs = np.nanmax(obs[mask])
     ax.axhline(peak_usgs, color=COLOR_OBS, lw=0.7, linestyle=":", alpha=0.5)
-    ax.text(ZOOM_START + pd.Timedelta(hours=2), peak_usgs * 1.01,
-            f"USGS peak {peak_usgs:.0f} m³/s", fontsize=8.5, color="black", alpha=0.75)
+    # Place annotation to the right of the peak to avoid legend overlap
+    ax.text(pd.Timestamp("2024-09-28 06:00:00"), peak_usgs * 1.02,
+            f"USGS peak {peak_usgs:.0f} m³/s", fontsize=8.5, color="black",
+            alpha=0.8, ha="right")
 
     _add_helene_band(ax)
     _format_xaxis(ax, mdates.DayLocator(interval=1), "%b %d")
@@ -179,7 +181,7 @@ def main():
         "Hurricane Helene -- Probabilistic discharge forecast at gauge 03463300 (South Toe River)\n"
         "600-member CFE ensemble + DA (Muskingum routing)",
         fontsize=11)
-    ax.legend(fontsize=9, loc="upper left")
+    ax.legend(fontsize=9, loc="lower right")
     ax.grid(True, alpha=0.25)
     plt.tight_layout()
     out1 = os.path.join(args.out_dir, "helene_ensemble_vs_usgs.png")
@@ -219,7 +221,7 @@ def main():
     ax_bot.set_xlabel("Date (UTC)", fontsize=10)
     ax_bot.set_ylabel("Discharge (m³/s)", fontsize=10)
     ax_bot.set_title("Hurricane Helene window -- 600-member ensemble envelope", fontsize=10)
-    ax_bot.legend(fontsize=9, loc="upper left")
+    ax_bot.legend(fontsize=9, loc="lower right")
     ax_bot.grid(True, alpha=0.25)
 
     plt.tight_layout()

@@ -35,12 +35,10 @@ import numpy as np
 import pandas as pd
 
 # Patch coverage.types for numba/troute on Python 3.10
-import coverage as _cov
 _stub = _types.ModuleType('coverage.types')
 for _cls in ['Tracer','TTraceData','TShouldTraceFn','TFileDisposition',
              'TShouldStartContextFn','TWarnFn','TTraceFn']:
     setattr(_stub, _cls, type(_cls, (), {}))
-_cov.types = _stub
 sys.modules['coverage.types'] = _stub
 
 import troute.nhd_network as nhd_network
