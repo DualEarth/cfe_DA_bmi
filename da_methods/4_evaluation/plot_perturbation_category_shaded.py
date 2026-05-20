@@ -31,7 +31,7 @@ import matplotlib.patches as mpatches
 CAT = "cat-1016300"
 
 SEN_DIR = "/mnt/disk2/suma_helen_poster/da_results/v2_sensitivity"
-DA_DIR  = "/mnt/disk2/suma_helen_poster/da_results/v2_true_enkf_vrugt"
+OBS_DIR = "/mnt/disk2/1400_sites_helene/catchment_ts_03463300_with_variance"
 
 OUT_LINEAR = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_linear.png")
 OUT_LOG    = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_log.png")
@@ -62,11 +62,11 @@ def load_members(source):
 
 
 def load_obs():
-    p = os.path.join(DA_DIR, CAT, f"{CAT}_test_results.csv")
+    p = os.path.join(OBS_DIR, f"{CAT}.csv")
     if not os.path.exists(p):
         return None, None
     df = pd.read_csv(p, parse_dates=["date"])
-    return df["date"].values, df["obs_mm_h"].values
+    return df["date"].values, df["qkrig"].values
 
 
 def plot_panel(ax, obs_dates, obs_vals, log_y=False):
