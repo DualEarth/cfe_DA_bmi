@@ -295,7 +295,20 @@ def main():
     rng = np.random.default_rng(hash(CAT_ID) & 0x7fffffff)
 
     # Phase 1: get DA analysis snapshots
-    snapshots = run_phase1_da(cfg_path, df_test, obs_dict, var_dict, rng)
+    # Check if a prior run already saved them (skip re-running DA if so)
+    snap_cache = OUT_DIR / f"{CAT_ID}_da_snapshots.parquet"
+    if snap_cache.exists():
+        print(f"  Loading cached DA snapshots from {snap_cache}")
+        df_snaps = pd.read_parquet(snap_cache)
+        snapshots = {
+            pd.Timestamp(row["issue_time"]): {
+                "soil_m": row["soil_m"], "gw_m": row["gw_m"],
+                "nash0": row["nash0"],   "nash1": row["nash1"],
+            }
+            for _, row in df_snaps.iterrows()
+        }
+    else:
+        snapshots = run_phase1_da(cfg_path, df_test, obs_dict, var_dict, rng)
 
     issue_times = sorted(snapshots.keys())
     t0_to_idx = {t: i for i, t in enumerate(df_test["date"].apply(pd.Timestamp))}
@@ -308,6 +321,8 @@ def main():
           f"{len(issue_times)} issue times)...")
 
     all_records = []
+    all_hydro_draw_records  = []   # (issue_time, hydro_draw_j, states)
+    all_forcing_draw_records = []  # (issue_time, forcing_draw_i, lead, P_pert, E_pert, scales)
 
     for t_idx, t0 in enumerate(issue_times):
         snap = snapshots[t0]
@@ -324,6 +339,12 @@ def main():
                 fi = start_idx + lead
                 if fi >= len(df_test):
                     seq.append((0.0, 0.0))
+                    all_forcing_draw_records.append({
+                        "issue_time": t0_str, "forcing_draw_i": i,
+                        "lead_hour": lead,
+                        "P_pert_mmh": 0.0, "E_pert_mmh": 0.0,
+                        "precip_scale": np.nan, "pet_scale": np.nan,
+                    })
                     continue
                 row = df_test.iloc[fi]
                 P = float(row["total_precipitation"])
@@ -332,11 +353,26 @@ def main():
                 P_pert = float(P * rng.lognormal(mu_p, PRECIP_SIGMA)) if P > 0 else 0.0
                 E_pert = max(float(E * (1.0 + PET_SIGMA * rng.standard_normal())), 0.0)
                 seq.append((P_pert, E_pert))
+                all_forcing_draw_records.append({
+                    "issue_time": t0_str, "forcing_draw_i": i,
+                    "lead_hour": lead,
+                    "P_pert_mmh": P_pert, "E_pert_mmh": E_pert,
+                    "precip_scale": P_pert / P if P > 0 else np.nan,
+                    "pet_scale":    E_pert / E if E > 0 else np.nan,
+                })
             forcing_seqs.append(seq)
 
         # Pre-draw n_ha hydro-state perturbations
         state_draws = [snap if j == 0 else perturb_state(snap, rng)
                        for j in range(n_ha)]
+
+        # Record each hydro draw's actual initial state
+        for j, st in enumerate(state_draws):
+            all_hydro_draw_records.append({
+                "issue_time": t0_str, "hydro_draw_j": j,
+                "soil_m": st["soil_m"], "gw_m": st["gw_m"],
+                "nash0":  st["nash0"],  "nash1": st["nash1"],
+            })
 
         # q_matrix shape: (FORECAST_HOURS, n_fa, n_ha)
         q_matrix = np.full((FORECAST_HOURS, n_fa, n_ha), np.nan)
@@ -371,6 +407,43 @@ def main():
     print(f"  Shape: {df_out.shape}  "
           f"({df_out['issue_time'].nunique()} issue times x "
           f"{FORECAST_HOURS} leads x {n_total} members)")
+
+    # ------------------------------------------------------------------ #
+    # Provenance files — enable full ensemble traceability and restart     #
+    # ------------------------------------------------------------------ #
+
+    # 1. DA analysis snapshots — unperturbed state at each issue_time.
+    #    Load any row and set_state() to restart from that init time.
+    snap_records = [
+        {"issue_time": t.strftime("%Y-%m-%d %H:%M:%S"), **s}
+        for t, s in snapshots.items()
+    ]
+    snap_path = OUT_DIR / f"{CAT_ID}_da_snapshots.parquet"
+    pd.DataFrame(snap_records).to_parquet(snap_path, index=False)
+    print(f"Saved: {snap_path}  ({len(snap_records)} snapshots)")
+
+    # 2. Member manifest — decoder ring: member_col -> (forcing_draw_i, hydro_draw_j).
+    #    member_k uses forcing draw k//n_ha and hydro draw k%n_ha.
+    manifest = [
+        {"member": f"member_{k:04d}", "member_idx": k,
+         "forcing_draw_i": k // n_ha, "hydro_draw_j": k % n_ha}
+        for k in range(n_total)
+    ]
+    manifest_path = OUT_DIR / f"{CAT_ID}_member_manifest.csv"
+    pd.DataFrame(manifest).to_csv(manifest_path, index=False)
+    print(f"Saved: {manifest_path}  ({n_total} members)")
+
+    # 3. Hydro draw states — actual perturbed initial state for each of
+    #    n_ha draws at every issue_time. Links member -> initial conditions.
+    hydro_path = OUT_DIR / f"{CAT_ID}_hydro_draw_states.parquet"
+    pd.DataFrame(all_hydro_draw_records).to_parquet(hydro_path, index=False)
+    print(f"Saved: {hydro_path}  ({len(all_hydro_draw_records)} rows)")
+
+    # 4. Forcing draw sequences — actual P/PET perturbation values for each
+    #    of n_fa draws at every (issue_time, lead_hour). Links member -> forcing.
+    forcing_path = OUT_DIR / f"{CAT_ID}_forcing_draw_sequences.parquet"
+    pd.DataFrame(all_forcing_draw_records).to_parquet(forcing_path, index=False)
+    print(f"Saved: {forcing_path}  ({len(all_forcing_draw_records)} rows)")
 
 
 if __name__ == "__main__":
