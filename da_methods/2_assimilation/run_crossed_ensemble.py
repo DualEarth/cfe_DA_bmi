@@ -11,8 +11,8 @@ For each Helene issue time t0:
         - Initial state  = perturbed DA analysis state  (draw j of hydro arm)
         - Met forcing    = perturbed precip/PET sequence (draw i of forcing arm)
 
-This gives the full uncertainty envelope combining both sources -- what Suma
-calls the "operational ensemble" picture.
+This gives the full uncertainty envelope combining both sources —
+the operational probabilistic forecast picture.
 
 Output (per catchment):
     <out-dir>/<cat-id>/<cat-id>_crossed_ensemble.parquet

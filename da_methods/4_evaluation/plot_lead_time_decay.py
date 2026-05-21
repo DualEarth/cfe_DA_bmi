@@ -8,10 +8,10 @@ Two-panel figure for ONE catchment:
   BOTTOM — Mean ensemble spread (std-dev across 20 members, averaged across
            all issue times) at each lead hour. Tells you whether forcing
            perturbation alone keeps the forecast ensemble diverse during the
-           18-hour free-run — useful for Suma's "look at individual members"
-           question without needing the full spaghetti view.
+           18-hour free-run — useful for inspecting individual members
+           without needing the full spaghetti view.
 
-This is the catchment-level analog of Dr. Frame's gauge-level decay curve.
+This is the catchment-level analog of the gauge-level decay curve.
 Routing to the gauge is a separate post-step (route_lead_time_forecasts.py
 + a gauge-level decay script); this script lets us look at the catchment-level
 signal without T-route in the loop.

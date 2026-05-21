@@ -17,7 +17,7 @@ da_methods/
 ```
 
 Note: `run_route.py` (deterministic Muskingum routing via tx-fast-hydrology) lives in
-`catchment_run/` — it routes Kunal's dynamic-Vrugt DA results to the gauge.
+`catchment_run/` — it routes the dynamic-Vrugt DA results to the gauge.
 
 ---
 
@@ -27,7 +27,7 @@ Note: `run_route.py` (deterministic Muskingum routing via tx-fast-hydrology) liv
 |---|---|
 | `1_calibrate/calibrate_catchment_cfe_da_v2.py` | Per-catchment CFE calibration using Qkrig streamflow observations. Outputs `{cat-id}_best_params.json` used by all downstream DA steps. |
 
-Calibration results (all 21 catchments) are in `v2_true_enkf_pn/` (Kunal's NC kriging, held-out gauge run 3).
+Calibration results (all 21 catchments) are in `v2_true_enkf_pn/` (NC kriging, held-out gauge run 3).
 
 ---
 
@@ -118,7 +118,7 @@ Dynamic Vrugt R improves KGE by +0.08 vs Qkrig and +0.055 vs USGS gauge.
 ## Data Flow Summary
 
 ```
-v2_true_enkf_pn/{cat-id}_best_params.json        [Kunal's calibration, all 21 cats]
+v2_true_enkf_pn/{cat-id}_best_params.json        [calibration results, all 21 cats]
          |
          v
 run_perturbation_da_on.py   -->  {cat-id}_da_forcing_arm.csv  (30 members)
@@ -146,7 +146,7 @@ plot_vrugt_comparison.py  -->  vrugt_vs_novrugt_helene_zoom.png  [Vrugt impact f
 ## Run Order (all 21 catchments)
 
 ```bash
-# 1. Calibration (already done by Kunal for all 21 catchments)
+# 1. Calibration (already done for all 21 catchments)
 
 # 2. DA-on perturbation arms (2a/2b diagnostics)
 bash batch_run_da_on_all_cats.sh

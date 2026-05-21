@@ -1,12 +1,12 @@
 """
-Gauge-level lead-time forecast decay curve — Frame's actual deliverable.
+Gauge-level lead-time forecast decay curve.
 
 Routes 21-catchment forecast CSVs through T-route to USGS gauge 03463300 and
 plots RMSE vs lead time (DA solid, open-loop dashed) against USGS observed Q.
 Same 2-panel layout as the catchment-level plot, plus a regime split for the
 Helene window.
 
-The routing step is done separately by Kunal's run_route_troute_leadtime.py;
+The routing step is done separately by route_lead_time_forecasts.py;
 this script just reads the resulting parquets and produces the plot.
 
 Inputs:

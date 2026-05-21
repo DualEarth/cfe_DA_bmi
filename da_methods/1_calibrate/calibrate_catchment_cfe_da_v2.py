@@ -54,10 +54,10 @@ Forcing (training):  per-catchment NWM retro CSV
 Forcing (testing):   per-catchment NWM operational CSVs (two dirs concatenated)
                      APCP_surface in kg/m²/s → converted to mm/h inside
 Obs (kriging):       per-catchment CSV. Three column layouts auto-handled:
-                       a) datetime, qkrig                (Suma's older format)
-                       b) datetime, qkrig, variance       (Suma's with-variance)
-                       c) time, qkrig_mm_hr               (Kunal's standard)
-                       d) time, qkrig_mm_hr, qkrig_variance  (Kunal's with-variance)
+                       a) datetime, qkrig                (format A)
+                       b) datetime, qkrig, variance       (format A with-variance)
+                       c) time, qkrig_mm_hr               (format B standard)
+                       d) time, qkrig_mm_hr, qkrig_variance  (format B with-variance)
                      If a per-hour variance column is present it is used as R;
                      otherwise R = --enkf-obs-error-std^2 is used as fallback.
 
@@ -77,7 +77,7 @@ KEY CLI FLAGS
 
 OBSERVATION ERROR VARIANCE R
   Production default: Vrugt et al. 2005 (SODA paper) heteroscedastic R
-  scaled by the kriging variance (per Dr. Frame's suggestion):
+  scaled by the kriging variance:
       R(t) = (alpha * y_obs(t))^2 + scale * sigma^2_krig(t)
   Flow-magnitude term keeps R small at low flow (so DA fires) and larger
   at peaks (where obs is also more uncertain). Kriging variance brings
@@ -251,9 +251,9 @@ class EnKFAssimilator:
         
         # Load kriging observations
         # Handles three obs-CSV layouts:
-        #   Suma's:                       columns = 'datetime', 'qkrig', optional 'variance'
-        #   Kunal's (no variance):        columns = 'time', 'qkrig_mm_hr'
-        #   Kunal's with-variance:        columns = 'time', 'qkrig_mm_hr', 'qkrig_variance'
+        #   Format A:                     columns = 'datetime', 'qkrig', optional 'variance'
+        #   Format B (no variance):       columns = 'time', 'qkrig_mm_hr'
+        #   Format B with-variance:       columns = 'time', 'qkrig_mm_hr', 'qkrig_variance'
         self.obs_dict = {}
         self.obs_var_dict = {}
         if obs_file and os.path.exists(obs_file):
@@ -269,7 +269,7 @@ class EnKFAssimilator:
                 krig_var = row['variance'] if has_variance else self.obs_error_var
                 self.obs_dict[row['date']] = y_obs
                 # Vrugt et al. 2005 (SODA) heteroscedastic R, scaled by kriging
-                # variance per Frame's suggestion:
+                # Vrugt 2005 heteroscedastic R scaled by kriging variance:
                 #   R(t) = (alpha * y_obs(t))^2 + scale * sigma^2_krig(t)
                 # Flow-magnitude term makes R small at low flow (so DA fires),
                 # larger at peaks (where obs is also more uncertain). Kriging

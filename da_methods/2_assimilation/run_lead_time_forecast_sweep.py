@@ -1,5 +1,5 @@
 """
-Forecast lead-time evaluation (per Dr. Frame's request).
+Forecast lead-time evaluation.
 
 For each issue-time t0 in a sampling schedule across the test period, fork the
 ensemble at t0 and free-run 18 hours of forecast. Two parallel trajectories are

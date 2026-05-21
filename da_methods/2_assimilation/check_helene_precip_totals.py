@@ -13,7 +13,7 @@ Reference event totals for the basin (Helene, Sep 25-28 2024):
 
 If the NWM operational totals across the 21 catchments are < 200 mm typical,
 the forcing is the dominant bottleneck and no state-space DA can manufacture
-the missing runoff. That changes the conversation with Frame from "DA tuning"
+the missing runoff. That shifts the diagnosis from "DA tuning"
 to "forcing quality / precip ensemble".
 """
 import glob

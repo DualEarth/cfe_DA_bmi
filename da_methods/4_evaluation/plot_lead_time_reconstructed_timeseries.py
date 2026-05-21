@@ -1,5 +1,5 @@
 """
-Suma-style reconstructed time series at gauge 03463300, from our routed
+Reconstructed time series at gauge 03463300, from our routed
 lead-time forecasts. Mirrors the methodology of plot_timeseries_hourly_ensemble.py
 (qSpatialAR) but feeds from the EnKF + T-route pipeline instead of the CNN.
 
@@ -18,7 +18,7 @@ Obs:
 
 Output:
   <out-dir>/lead_time_reconstructed_timeseries.png
-  Default plot window: 2024-09-10 → 2024-10-10 (matches Suma's template).
+  Default plot window: 2024-09-10 → 2024-10-10.
 
 Each scenario's curve is annotated with NSE vs USGS obs over the plot window.
 """

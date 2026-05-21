@@ -4,7 +4,7 @@ Run the production DA pipeline for ONE catchment and save per-member streamflow.
 Identical to calibrate_catchment_cfe_da_v2.py in algorithm (init perturbation +
 forcing perturbation + process noise + true EnKF with Vrugt R), but writes one
 column per ensemble member instead of only the ensemble mean. This is for
-Suma's per-member factor-decomposition plot.
+the per-member factor-decomposition plot.
 
 To keep the comparison apples-to-apples with the sensitivity runs (which skip
 spinup), this script also SKIPS the spinup loop. Each member starts directly

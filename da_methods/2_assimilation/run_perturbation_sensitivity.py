@@ -1,7 +1,7 @@
 """
 Perturbation-source sensitivity analysis for the multi-catchment CFE DA experiment.
 
-For Suma's ensemble-spread attribution plots: run 20 CFE members through the test
+Ensemble-spread attribution: run 20 CFE members through the test
 period with ONLY ONE perturbation source active at a time, no DA, no spinup.
 
 Three sub-experiments (selected via --source):

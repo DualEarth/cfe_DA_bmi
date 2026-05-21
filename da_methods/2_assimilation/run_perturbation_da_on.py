@@ -16,7 +16,7 @@ with DA actively running during the analysis period:
         the DA analysis ensemble). Forcing = deterministic. Free-run 18 hours.
 
 These two arms isolate "where does forecast spread come from WITH DA?"
-— the figures Suma requested for the assimilation script section.
+— figures for the assimilation script section.
 
 Output (per catchment, per arm):
     <out-dir>/<cat-id>/<cat-id>_da_forcing_arm.csv

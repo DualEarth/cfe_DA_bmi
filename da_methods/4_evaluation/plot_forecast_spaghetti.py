@@ -1,7 +1,7 @@
 """
 plot_forecast_spaghetti.py
 
-"All forecasts ending at this hour" — Suma's verification-time-fixed spaghetti view.
+"All forecasts ending at this hour" — verification-time-fixed spaghetti view.
 
 Window: Sep 24 18 UTC -> Sep 30 06 UTC.
 For every initialization time whose 18-hour forecast overlaps this window:

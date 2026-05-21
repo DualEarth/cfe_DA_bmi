@@ -1,7 +1,7 @@
 """
 Per-catchment shaded ensemble-band plot, organized by perturbation category.
 
-Three categories (matching Suma's request):
+Three categories:
     1. Initial states            (red)
     2. Meteorological forcings   (blue)
     3. Hydrological states       (green)

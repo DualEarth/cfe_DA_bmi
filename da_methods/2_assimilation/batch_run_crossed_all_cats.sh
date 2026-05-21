@@ -33,7 +33,7 @@ for CAT in "${CATS[@]}"; do
     CAT_OUT=$OUT_DIR/$CAT
     mkdir -p "$CAT_OUT"
 
-    # Stage best_params directly from Kunal's v2_true_enkf_pn calibration results
+    # Stage best_params directly from v2_true_enkf_pn calibration results
     if [ ! -f "$CAT_OUT/${CAT}_best_params.json" ]; then
         SRC="$BEST_PARAMS_SRC/$CAT/${CAT}_best_params.json"
         if [ -f "$SRC" ]; then

@@ -6,7 +6,7 @@ For each target verification time T in the Helene peak window:
         issue_time = T - lead_hour*1h, for lead in 1..18
     error[lead] = ensemble_mean(q at T, initialized T-lead) - USGS_obs(T)
 
-This gives the correct operational picture Suma described:
+This gives the correct operational picture:
     - lead 1  = initialized 1 hr before T  (DA just ran  -> small error)
     - lead 18 = initialized 18 hr before T (DA long ago  -> error ~ open loop)
 
