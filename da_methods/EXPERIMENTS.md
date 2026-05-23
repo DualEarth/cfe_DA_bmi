@@ -32,11 +32,11 @@ updates exactly when they are most needed.
 | 2a. Forcing arm figures | ✅ | ✅ (same as F1) | ❌ | ❌ |
 | 2b. Hydro-state arm figures | ✅ | ✅ (same as F1) | ❌ | ❌ |
 | 2. 18hr forecast cycles | ✅ | ✅ | ❌ | ❌ |
-| 2. 600-member ensemble | ⏳ running | ✅ | ❌ | ❌ |
+| 2. 600-member ensemble | ✅ | ✅ | ❌ | ❌ |
 | 3. Route analysis trajectory | ✅ | ✅ | ✅ | ✅ |
 | 3. Route 18hr forecast cycles | ✅ | ✅ | ❌ | ❌ |
 | 4a. Error decay | ✅ | ✅ | ❌ | ❌ |
-| 4b. Ensemble vs obs | ⏳ | ✅ | ❌ | ❌ |
+| 4b. Ensemble vs obs | ✅ | ✅ | ❌ | ❌ |
 | 4c. Reconstructed timeseries | ✅ | ✅ | ❌ | ❌ |
 
 ---

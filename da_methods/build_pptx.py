@@ -365,6 +365,38 @@ def slide_three_way(prs):
               font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
 
 
+def slide_four_folder_full(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "R-Formula Comparison — All 4 Experiments (Full Period)",
+            "F1 Vrugt (best) · F2 R=0.07 · F3 Dyn Vrugt seeded · F4 Direct σ²  |  at gauge 03463300")
+
+    _add_image(slide, FIGS_DIR / "compare_all_folders_full.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "Vrugt R (F1) consistently outperforms fixed or direct-variance R  |  "
+              "Peak underestimate is a NWM forcing issue, not R-formula dependent",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
+def slide_four_folder_helene(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "R-Formula Comparison — Helene Window",
+            "F1 KGE=0.213 · F3 KGE=0.189 · F4 KGE=0.132  |  Vrugt keeps DA active at high flows")
+
+    _add_image(slide, FIGS_DIR / "compare_all_folders_helene.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "Direct σ²_krig (F4) worst during Helene — large kriging variance weakens DA "
+              "exactly when model needs correction most",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
 def slide_sensitivity_spaghetti(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _fill_bg(slide, C_DARK)
@@ -458,10 +490,14 @@ def main():
     print(" 16. Lead-time error decay")
     slide_three_way(prs)
     print(" 17. Three-way comparison")
+    slide_four_folder_full(prs)
+    print(" 18. Four-folder comparison (full period)")
+    slide_four_folder_helene(prs)
+    print(" 19. Four-folder comparison (Helene)")
     slide_sensitivity_spaghetti(prs)
-    print(" 18. Sensitivity spaghetti")
+    print(" 20. Sensitivity spaghetti")
     slide_summary(prs)
-    print(" 19. Summary")
+    print(" 21. Summary")
 
     prs.save(str(OUT_PATH))
     print(f"\nSaved: {OUT_PATH}")
@@ -484,6 +520,8 @@ def main():
         "lead_time_reconstructed_timeseries_helene.png",
         "error_fixed_target_mean.png",
         "da_vs_qkrig_vs_usgs.png",
+        "compare_all_folders_full.png",
+        "compare_all_folders_helene.png",
         "helene_sensitivity_spaghetti_main.png",
     ]
     missing = [f for f in all_figs if not (FIGS_DIR / f).exists()]
