@@ -225,7 +225,9 @@ def main():
     parser.add_argument("--out-dir",           required=True)
     parser.add_argument("--test-forcing-dir1", default=None)
     parser.add_argument("--test-forcing-dir2", default=None)
-    parser.add_argument("--hardcoded-r",       type=float, default=0.07)
+    parser.add_argument("--hardcoded-r",       type=float, default=None,
+                        help="Fixed R value for EnKF (e.g. 0.07). "
+                             "Omit to use dynamic Vrugt R: R=(0.10*y)^2 + 0.001*krig_var")
     parser.add_argument("--n-forcing",         type=int, default=N_FORCING,
                         help="Number of met forcing draws (default 30)")
     parser.add_argument("--n-hydro",           type=int, default=N_HYDRO,
