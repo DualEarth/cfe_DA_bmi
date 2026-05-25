@@ -72,6 +72,7 @@ CFE_CONFIG_FILE = None
 TEST_FORCING_FILE = None
 OUT_DIR         = None
 HARDCODED_R     = None
+DIRECT_VARIANCE = False   # when True: R = krig_var directly (no Vrugt formula)
 bmi_cfe         = None
 
 
@@ -174,8 +175,12 @@ def run_model_step(m, precip_mmh, pet_mmh):
 
 
 def enkf_update(state, q_sim, y_obs, krig_var, rng):
-    R = HARDCODED_R if HARDCODED_R is not None else max(
-        (0.10 * max(y_obs, 0.0)) ** 2 + 0.001 * krig_var, 1e-6)
+    if HARDCODED_R is not None:
+        R = HARDCODED_R
+    elif DIRECT_VARIANCE:
+        R = max(krig_var, 1e-6)
+    else:
+        R = max((0.10 * max(y_obs, 0.0)) ** 2 + 0.001 * krig_var, 1e-6)
     R = max(R, 1e-6)
     P_yy = max(q_sim * 0.01, 1e-6)
     K = P_yy / (P_yy + R)
@@ -214,7 +219,7 @@ def run_phase1_da(cfg_path, df_test, obs_dict, var_dict, rng):
 
 def main():
     global CAT_ID, OBS_FILE, CFE_CONFIG_FILE, TEST_FORCING_FILE
-    global OUT_DIR, HARDCODED_R, bmi_cfe
+    global OUT_DIR, HARDCODED_R, DIRECT_VARIANCE, bmi_cfe
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--cat-id",            required=True)
@@ -228,6 +233,10 @@ def main():
     parser.add_argument("--hardcoded-r",       type=float, default=None,
                         help="Fixed R value for EnKF (e.g. 0.07). "
                              "Omit to use dynamic Vrugt R: R=(0.10*y)^2 + 0.001*krig_var")
+    parser.add_argument("--direct-variance",   action="store_true", default=False,
+                        help="Use krig_var directly as R (no Vrugt scaling)")
+    parser.add_argument("--rng-seed",          type=int, default=None,
+                        help="RNG seed for reproducibility (default: hash of cat-id)")
     parser.add_argument("--n-forcing",         type=int, default=N_FORCING,
                         help="Number of met forcing draws (default 30)")
     parser.add_argument("--n-hydro",           type=int, default=N_HYDRO,
@@ -237,8 +246,9 @@ def main():
     CAT_ID        = args.cat_id
     OBS_FILE      = os.path.join(args.obs_dir, f"{CAT_ID}.csv")
     CFE_CONFIG_FILE = args.config_file
-    HARDCODED_R   = args.hardcoded_r
-    OUT_DIR       = Path(args.out_dir) / CAT_ID
+    HARDCODED_R     = args.hardcoded_r
+    DIRECT_VARIANCE = args.direct_variance
+    OUT_DIR         = Path(args.out_dir) / CAT_ID
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     n_fa = args.n_forcing
@@ -294,7 +304,8 @@ def main():
     cfg_path = write_model_config(best_params)
     print(f"  BMI config written once: {cfg_path}")
 
-    rng = np.random.default_rng(hash(CAT_ID) & 0x7fffffff)
+    rng = np.random.default_rng(args.rng_seed if args.rng_seed is not None
+                                else hash(CAT_ID) & 0x7fffffff)
 
     # Phase 1: get DA analysis snapshots
     # Check if a prior run already saved them (skip re-running DA if so)
