@@ -11,16 +11,20 @@ external `calibrate-cfe` repo — R formula is irrelevant at calibration time.
 
 ## Results Summary
 
-| Folder | R Formula | Full KGE | Helene KGE | Helene peak % USGS |
-|---|---|---|---|---|
-| [1 — Variance scaled Vrugt](folder1_variance_scaled_vrugt/) | `(0.10·y)² + 0.001·σ²_krig` | **+0.277** | **+0.213** | ~40% |
-| [2 — Fixed R=0.07](folder2_fixed_r_007/) | `0.07` (constant) | +0.261 | +0.189 | 37% |
-| [3 — Dynamic Vrugt seeded](folder3_dynamic_vrugt_seeded/) | `(0.10·y)² + 0.001·σ²_krig` (seed=42, spliced obs) | +0.261 | +0.189 | 37% |
-| [4 — Dynamic variance direct](folder4_dynamic_variance_direct/) | `σ²_krig` directly (seed=42) | +0.200 | +0.132 | 35% |
+| Folder | R Formula | Full KGE | Full NSE | Helene KGE | Helene NSE | Helene peak % USGS |
+|---|---|---|---|---|---|---|
+| [1 — Variance scaled Vrugt](folder1_variance_scaled_vrugt/) | `(0.10·y)² + 0.001·σ²_krig` | +0.277 | **+0.555** | +0.213 | **+0.459** | ~34% |
+| [2 — Fixed R=0.07](folder2_fixed_r_007/) | `0.07` (constant) | **+0.503** | +0.163 | **+0.439** | -0.009 | **~65%** |
+| [3 — Dynamic Vrugt seeded](folder3_dynamic_vrugt_seeded/) | `(0.10·y)² + 0.001·σ²_krig` (seed=42, spliced obs) | +0.261 | +0.485 | +0.189 | +0.372 | ~37% |
+| [4 — Dynamic variance direct](folder4_dynamic_variance_direct/) | `σ²_krig` directly (seed=42) | +0.200 | +0.428 | +0.132 | +0.303 | ~35% |
 
-**Finding:** Vrugt formula (Folder 1) gives the best gauge-level KGE. Using raw σ²_krig
-directly (Folder 4) is the worst — large kriging variance during Helene weakens DA
-updates exactly when they are most needed.
+USGS Helene peak: 1885.7 m³/s
+
+**Finding:** Fixed R=0.07 (Folder 2) gives the best KGE and captures 65% of the Helene
+peak — constant small R keeps Kalman gain high throughout the flood. The Vrugt formula
+inflates R at high flows, dampening DA updates exactly when they matter most, so Folder 1
+captures only 34% of the peak despite having the best NSE. Raw σ²_krig (Folder 4) is
+worst across all metrics.
 
 ---
 
