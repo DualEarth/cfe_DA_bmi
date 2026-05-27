@@ -385,14 +385,73 @@ def slide_four_folder_helene(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _fill_bg(slide, C_DARK)
     _header(slide, "R-Formula Comparison — Helene Window",
-            "F1 KGE=0.213 · F3 KGE=0.189 · F4 KGE=0.132  |  Vrugt keeps DA active at high flows")
+            "F1 KGE=0.213 · F2 KGE=0.439 · F3 KGE=0.189 · F4 KGE=0.132  |  Fixed R=0.07 best at peak")
 
     _add_image(slide, FIGS_DIR / "compare_all_folders_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
-              "Direct σ²_krig (F4) worst during Helene — large kriging variance weakens DA "
-              "exactly when model needs correction most",
+              "Fixed R=0.07 (F2) keeps Kalman gain high at peak — Vrugt inflates R at high flows, dampening DA updates",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
+def slide_f3_lead_decay(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F3: Forecast Error Decay — Dynamic Vrugt Seeded (seed=42)",
+            "R = (0.10·y)² + 0.001·σ²_krig  |  Pooled across all regimes  |  Helene window")
+
+    _add_image(slide, FIGS_DIR / "f3_lead_time_decay_gauge_pooled.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "F3 KGE=+0.261 (full period)  |  Helene KGE=+0.189  |  Peak 693.8 m³/s (37% of USGS 1885.7)",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
+def slide_f3_ensemble(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F3: Ensemble Routing at Gauge — Dynamic Vrugt Seeded",
+            "600-member crossed ensemble  |  5–95 pct band + median vs USGS  |  Helene window")
+
+    _add_image(slide, FIGS_DIR / "f3_helene_ensemble_twopanel.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "p95=759 m³/s, p50=484 m³/s  |  Vrugt R grows at high flows, narrowing spread near peak",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
+def slide_f4_lead_decay(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F4: Forecast Error Decay — Direct σ²_krig (seed=42)",
+            "R = σ²_krig directly (no Vrugt formula)  |  Pooled across all regimes")
+
+    _add_image(slide, FIGS_DIR / "f4_lead_time_decay_gauge_pooled.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "F4 KGE=+0.200 (full period)  |  Helene KGE=+0.132  |  Peak 667.9 m³/s (35% of USGS 1885.7)",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
+def slide_f4_ensemble(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F4: Ensemble Routing at Gauge — Direct σ²_krig",
+            "600-member crossed ensemble  |  5–95 pct band + median vs USGS  |  Helene window")
+
+    _add_image(slide, FIGS_DIR / "f4_helene_ensemble_twopanel.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "p95=744 m³/s, p50=552 m³/s  |  Large σ²_krig collapses Kalman gain — worst performer across all metrics",
               Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
               font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
 
@@ -494,10 +553,18 @@ def main():
     print(" 18. Four-folder comparison (full period)")
     slide_four_folder_helene(prs)
     print(" 19. Four-folder comparison (Helene)")
+    slide_f3_lead_decay(prs)
+    print(" 20. F3 lead-time error decay")
+    slide_f3_ensemble(prs)
+    print(" 21. F3 ensemble at gauge")
+    slide_f4_lead_decay(prs)
+    print(" 22. F4 lead-time error decay")
+    slide_f4_ensemble(prs)
+    print(" 23. F4 ensemble at gauge")
     slide_sensitivity_spaghetti(prs)
-    print(" 20. Sensitivity spaghetti")
+    print(" 24. Sensitivity spaghetti")
     slide_summary(prs)
-    print(" 21. Summary")
+    print(" 25. Summary")
 
     prs.save(str(OUT_PATH))
     print(f"\nSaved: {OUT_PATH}")
@@ -522,6 +589,10 @@ def main():
         "da_vs_qkrig_vs_usgs.png",
         "compare_all_folders_full.png",
         "compare_all_folders_helene.png",
+        "f3_lead_time_decay_gauge_pooled.png",
+        "f3_helene_ensemble_twopanel.png",
+        "f4_lead_time_decay_gauge_pooled.png",
+        "f4_helene_ensemble_twopanel.png",
         "helene_sensitivity_spaghetti_main.png",
     ]
     missing = [f for f in all_figs if not (FIGS_DIR / f).exists()]
