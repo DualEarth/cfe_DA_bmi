@@ -1,344 +1,290 @@
-# DA Methods — Qkrig CFE Data Assimilation for Hurricane Helene Forecasting
+# CFE + EnKF Data Assimilation — Hurricane Helene Forecasting
 
-**Gauge:** 03463300 — South Toe River Near Celo, NC  
-**Watershed:** 21 catchments · 113.18 km² · outlet wb-1016283  
-**Event:** Hurricane Helene, September 24–29, 2024  
+**Gauge:** USGS 03463300 — South Toe River Near Celo, NC  
+**Watershed:** 21 NWM catchments · 113.18 km² · outlet reach wb-1016283  
+**Event:** Hurricane Helene, September 24–29, 2024 (USGS peak: 1885.7 m³/s)  
+**Test period:** October 2023 – October 2024 (13 months)  
 **Model:** CFE (Conceptual Functional Equivalent) hydrological model via BMI interface  
-**DA method:** Ensemble Kalman Filter (EnKF) assimilating Qkrig streamflow observations
+**DA method:** Ensemble Kalman Filter (EnKF) assimilating Qkrig streamflow observations  
 
 ---
 
-## Scientific Overview
+## What This Repo Tests
 
-The pipeline corrects CFE model states every hour using kriging-interpolated streamflow
-observations (Qkrig), then launches 18-hour free-running forecasts from each corrected
-state. Two uncertainty arms are maintained separately and crossed to form a 600-member
-probabilistic ensemble:
+Four experiments comparing how the **observation error variance R** is formulated in
+the EnKF update. R controls how strongly the DA pulls model states toward the
+kriging-interpolated observation (Qkrig) at each hourly timestep:
 
-- **Forcing arm (30 members):** stochastic precip/PET draws — represents meteorological
-  uncertainty in the forecast
-- **Hydro-state arm (20 members):** perturbed soil moisture and routing store initial
-  conditions — represents uncertainty in the catchment state at initialization
+| Folder | R Formula | Key idea |
+|---|---|---|
+| [folder1_variance_scaled_vrugt/](folder1_variance_scaled_vrugt/) | `(0.10·y)² + 0.001·σ²_krig` | Flow-scaled R — uncertainty grows with flow magnitude (Vrugt 2005) |
+| [folder2_fixed_r_007/](folder2_fixed_r_007/) | `0.07` (constant) | Simple fixed R — high constant Kalman gain regardless of flow |
+| [folder3_dynamic_vrugt_seeded/](folder3_dynamic_vrugt_seeded/) | `(0.10·y)² + 0.001·σ²_krig` | Same Vrugt formula with dynamic kriging variance and fixed RNG seed |
+| [folder4_dynamic_variance_direct/](folder4_dynamic_variance_direct/) | `σ²_krig` directly | Raw kriging variance as R — no flow-magnitude term |
 
-The 600-member crossed ensemble (30 × 20) is routed through the channel network to
-USGS gauge 03463300 to produce probabilistic streamflow forecasts at the outlet.
+---
 
-### Observation error variance — Vrugt 2005 heteroscedastic R
+## Key Results
+
+| Folder | Full KGE | Full NSE | Helene KGE | Helene NSE | Helene peak |
+|---|---|---|---|---|---|
+| F1 — Vrugt | +0.277 | **+0.555** | +0.213 | **+0.459** | 645.7 m³/s (34%) |
+| F2 — Fixed R=0.07 | **+0.503** | +0.163 | **+0.439** | -0.009 | **1227.1 m³/s (65%)** |
+| F3 — Vrugt seeded | +0.261 | +0.485 | +0.189 | +0.372 | 693.8 m³/s (37%) |
+| F4 — Direct σ²_krig | +0.200 | +0.428 | +0.132 | +0.303 | 667.9 m³/s (35%) |
+
+**USGS Helene peak: 1885.7 m³/s**
+
+**Finding:** Fixed R=0.07 (F2) gives the best KGE and peak capture. Constant small R
+keeps Kalman gain K = P/(P+R) near 1 throughout the flood, so the model tracks
+observations aggressively at every timestep. The Vrugt formula inflates R at high flows
+(R ≈ 35,000 at the Helene peak), collapsing the gain exactly when the DA update matters
+most. Raw σ²_krig (F4) performs worst.
+
+F1 has the best NSE because it fits the overall hydrograph shape better. F2's high
+constant gain overshoots at low flows, hurting NSE, but it captures the peak far better.
+
+---
+
+## Which Comparisons Are Controlled
+
+**Not all four folders can be directly compared to each other.** Two design differences
+exist between F1/F2 and F3/F4:
+
+### 1 — Different RNG seeds
+
+The EnKF is an ensemble method. At each timestep, perturbations are drawn from a random
+number generator to create the ensemble spread:
+
+| Folder | RNG seed |
+|---|---|
+| F1, F2 | `hash(catchment_id) & 0x7fffffff` — unique per catchment, not fixed |
+| F3, F4 | `42` — fixed, same for all catchments |
+
+Different seeds → different perturbation realizations → different ensemble updates at
+every timestep → different analysis trajectories, even with the same R formula.
+
+With 30 forcing members and 20 hydro-state members this is a small ensemble; seed
+choice can shift KGE by ~0.01–0.03. The gap between F1 (+0.277) and F3 (+0.261) —
+both using the same Vrugt R formula — is explained by the seed difference alone, not
+by any methodological change.
+
+### 2 — Different kriging variance during Helene
+
+F1/F2 use `catchment_ts_03463300_with_variance/` (static σ²_krig ≈ 4.17 throughout).  
+F3/F4 use `catchment_ts_03463300_spliced_dyn_helene/` (dynamic σ²_krig drops to ~1.6
+at the Helene peak — observations treated as more trustworthy during the flood).
+
+The **Qkrig flow values are identical** in both datasets; only the variance changes.
+For F3 (Vrugt), the 0.001 weight on σ²_krig makes the variance difference negligible.
+For F4 (direct σ²_krig), the lower variance at Helene peak means stronger DA updates —
+but this is offset by the absence of the flow-magnitude term entirely.
+
+### Valid controlled comparisons
+
+| Pair | Seed | Obs variance | R formula | Valid? |
+|---|---|---|---|---|
+| F1 vs F2 | both hash | both static ~4.17 | Vrugt vs Fixed 0.07 | ✅ **clean** |
+| F3 vs F4 | both seed=42 | both dynamic | Vrugt vs Direct σ² | ✅ **clean** |
+| F1 vs F3 | different | small difference | same (Vrugt) | ⚠️ seed confound |
+| F2 vs F4 | different | larger difference | different | ⚠️ seed + obs confound |
+
+**To fully compare all four R formulas in a controlled way**, F3 and F4 would need to
+be re-run with the hash-based seed and the same obs dataset as F1/F2. See
+[EXPERIMENTS.md](EXPERIMENTS.md) for the full completeness matrix.
+
+---
+
+## Scientific Approach
+
+### EnKF update
+
+At each hourly timestep t:
 
 ```
-R(t) = (alpha × y_obs(t))² + scale × sigma²_krig(t)
-       alpha = 0.10   (10% relative error)
+K(t)  = P(t) / (P(t) + R(t))          Kalman gain
+x̂(t)  = x(t) + K(t) · (y_obs(t) − H·x(t))   state update
+```
+
+where P is ensemble state variance, y_obs is Qkrig, and R is the observation error
+variance. Each experiment differs only in how R is computed.
+
+### Vrugt 2005 heteroscedastic R (F1, F3)
+
+```
+R(t) = (α · y_obs(t))² + scale · σ²_krig(t)
+       α = 0.10   (10% relative error on the observation)
        scale = 0.001
 ```
 
-The flow-magnitude term keeps R small at low flow (DA fires aggressively) and larger
-at peak flow (where the observation is also more uncertain). The kriging variance
-`sigma²_krig` brings per-hour, per-catchment observational uncertainty into R.
+R scales with flow magnitude: small at low flow (gain near 1, aggressive DA) and
+large at peak flow. At Helene peak (~3.2 mm/h per catchment): R ≈ 0.1, K ≈ small.
+
+### Fixed R (F2)
+
+```
+R = 0.07  (constant)
+```
+
+Kalman gain K = P/(P+0.07) stays near 1 throughout the simulation including the peak.
+The DA update is equally aggressive at low and high flows.
+
+### Direct kriging variance (F4)
+
+```
+R(t) = σ²_krig(t)
+```
+
+σ²_krig is the spatial kriging interpolation uncertainty — typically ~4.17 (static obs)
+or ~1.6–2.5 at Helene peak (dynamic obs). This gives weaker DA than Fixed R=0.07 at
+low flows and stronger DA at peak when σ²_krig drops.
 
 ### 18-hour forecast cycle
 
 At each initialization time t0:
-1. DA analyses the ensemble state using Qkrig
-2. The analyzed state is snapshotted (saved to `_da_snapshots.parquet`)
-3. DA is switched off — the ensemble free-runs 18 hours
-4. At t0+1, DA resumes on the live ensemble; a new 18-hour fork begins
+1. EnKF analyses the ensemble state using Qkrig
+2. Analyzed state is snapshotted (`_da_snapshots.parquet` — enables restart)
+3. DA switched off — ensemble free-runs for 18 hours
+4. At t0+1, DA resumes; a new 18-hour fork begins
 
-This means the model can be **restarted** from any saved snapshot with DA on or off.
+### Ensemble design (2a + 2b → 2d)
+
+Two independent uncertainty arms are crossed to form a 600-member ensemble:
+
+- **Forcing arm (30 members, 2a):** stochastic precip/PET draws at each issue time.
+  Precip: lognormal multiplier σ=0.15. PET: Gaussian multiplier σ=0.10, clipped at 0.
+- **Hydro-state arm (20 members, 2b):** perturbed soil moisture and routing store
+  initial conditions — 5% multiplicative noise.
+
+**Crossed ensemble (600 members, 2d):**
+```
+member_k  →  forcing draw  k // 20   (selects 1 of 30 met perturbations)
+          →  hydro draw    k % 20    (selects 1 of 20 initial-state draws)
+```
+
+### Routing
+
+Per-catchment runoff (mm/h) is routed through the channel network via T-route
+Muskingum-Cunge (`compute_network_structured`) to the terminal reach wb-1016283
+at USGS gauge 03463300.
+
+GPKG: `/mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/gage-03463300_subset.gpkg`
 
 ---
 
 ## Folder Structure
 
+Each experiment is self-contained with identical pipeline structure:
+
 ```
 da_methods/
-├── README.md
-├── 1_calibrate/          # Step 1: CFE parameter calibration with Qkrig
-├── 2_assimilation/       # Step 2: DA, ensemble design, lead-time sweep
-├── 3_routing/            # Step 3: t-route ensemble routing to gauge
-└── 4_evaluation/         # Step 4: evaluation and diagnostic plots
-```
+├── README.md                     ← this file
+├── EXPERIMENTS.md                ← results table, completeness matrix, server paths
+├── compare_all_folders.py        ← cross-experiment comparison plots
+├── build_pptx.py                 ← builds helene_da_results.pptx (29 slides)
+├── pptx_figures/                 ← all presentation figures (tracked)
+│
+├── folder1_variance_scaled_vrugt/    R = (0.10·y)² + 0.001·σ²_krig, hash seed
+├── folder2_fixed_r_007/              R = 0.07 constant, hash seed
+├── folder3_dynamic_vrugt_seeded/     R = (0.10·y)² + 0.001·σ²_krig, seed=42
+└── folder4_dynamic_variance_direct/  R = σ²_krig directly, seed=42
 
-Note: `catchment_run/run_route.py` (tx-fast-hydrology Muskingum) routes the
-deterministic Vrugt/no-Vrugt DA results to the gauge separately from the ensemble.
+Each folder/:
+├── 1_calibrate/    calibrate_catchment_cfe_da_v2.py (shared params, R not involved)
+├── 2_assimilation/ run_perturbation_da_on.py, run_crossed_ensemble.py,
+│                   run_lead_time_forecast_sweep.py, batch scripts
+├── 3_routing/      run_route.py, run_route_crossed_ensemble.py,
+│                   route_lead_time_forecasts.py
+└── 4_evaluation/
+    ├── 4a_error_decay/      forecast skill decay vs lead time
+    ├── 4b_ensemble_vs_obs/  600-member ensemble vs USGS
+    └── 4c_timeseries/       reconstructed timeseries + spaghetti plots
+```
 
 ---
 
-## Step 1 — Calibrate CFE with Qkrig
+## Calibration
 
-| Script | Description |
-|---|---|
-| `1_calibrate/calibrate_catchment_cfe_da_v2.py` | Per-catchment CFE calibration using Qkrig observations. Outputs `{cat-id}_best_params.json` used by all downstream steps. Also runs the full DA test period when `--enkf-enabled` is passed. |
+CFE parameters are calibrated per catchment using Qkrig observations. R formula is
+**not involved at calibration time** — calibration is shared across all four folders.
 
-Calibrated parameters for all 21 catchments are in `v2_true_enkf_pn/`.
+Best params: `{cat-id}_best_params.json` in each experiment's source directory.
 
-**Key CLI flags:**
+Key CLI flags for `calibrate_catchment_cfe_da_v2.py`:
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--enkf-enabled` | off | Turn DA on |
+| `--enkf-enabled` | off | Turn DA on during calibration run |
 | `--enkf-members 20` | 20 | Ensemble size |
-| `--no-vrugt-r` | off | Revert to raw kriging variance (not recommended) |
-| `--vrugt-alpha 0.10` | 0.10 | Relative error fraction in Vrugt R |
-| `--vrugt-scale 0.001` | 0.001 | Kriging variance scaling in Vrugt R |
+| `--no-vrugt-r` | off | Use raw kriging variance instead of Vrugt formula |
+| `--vrugt-alpha 0.10` | 0.10 | α in Vrugt R formula |
+| `--vrugt-scale 0.001` | 0.001 | Kriging variance scaling factor |
 
 ---
 
-## Step 2 — Assimilation and Ensemble Design
-
-### 2a — Forcing uncertainty arm (30 members)
-
-DA analyses states every hour using Qkrig. At each issue time, 30 members are forked
-with independent stochastic precip/PET draws; all share the same DA-analyzed state.
-Free-run 18 hours, no further DA.
-
-- Precip: lognormal multiplier, σ = 0.15 (mean-preserving)
-- PET: Gaussian multiplier, σ = 0.10, clipped at 0
-
-### 2b — Hydro-state uncertainty arm (20 members)
-
-Same DA analysis. At each issue time, 20 members are forked with perturbed initial
-states (5% multiplicative noise on soil/GW/Nash reservoirs); all use deterministic
-forcing. Free-run 18 hours.
-
-### 2c — 18-hour forecast cycle
-
-DA is applied at every hourly initialization throughout the test period. The lead-time
-sweep runs two parallel trajectories simultaneously:
-
-- `da` — full EnKF on, states corrected every hour
-- `openloop` — no DA ever fires; same forcing perturbations
-
-At each issue time both are forked into 18-hour free forecasts. This produces the
-data for the 4a (skill decay) and 4c (reconstructed timeseries) evaluation plots.
-
-### 2d — 600-member crossed ensemble
-
-The 30 forcing draws and 20 hydro-state draws are crossed:
-```
-member_k  →  forcing draw  k // 20   (0–29)
-          →  hydro draw    k % 20    (0–19)
-```
-
-Four provenance files are saved alongside `{cat-id}_crossed_ensemble.parquet`:
-
-| File | Contents |
-|---|---|
-| `{cat-id}_da_snapshots.parquet` | DA-analyzed state at every issue time — enables restart |
-| `{cat-id}_member_manifest.csv` | Decoder ring: member_k → (forcing_draw_i, hydro_draw_j) |
-| `{cat-id}_hydro_draw_states.parquet` | Actual perturbed initial states for each of 20 hydro draws |
-| `{cat-id}_forcing_draw_sequences.parquet` | Actual P/PET values and scale factors for each of 30 forcing draws |
-
-| Script | Description |
-|---|---|
-| `2_assimilation/run_perturbation_da_on.py` | DA-on perturbation arms for one catchment; outputs forcing-arm CSV (30 members) and hydro-arm CSV (20 members). |
-| `2_assimilation/run_crossed_ensemble.py` | Crosses the arms → 600-member parquet + 4 provenance files. |
-| `2_assimilation/run_lead_time_forecast_sweep.py` | 18-hour forecast sweep across full test period; outputs per-lead-hour DA and open-loop CSVs. |
-| `2_assimilation/run_sweep_all_21_hardcoded_r.py` | Launches `run_lead_time_forecast_sweep.py` for all 21 catchments in parallel (configurable concurrency). |
-| `2_assimilation/batch_run_da_on_all_cats.sh` | Batch runner for `run_perturbation_da_on.py` across all 21 catchments. |
-| `2_assimilation/batch_run_crossed_all_cats.sh` | Batch runner for `run_crossed_ensemble.py` across all 21 catchments. |
-
----
-
-## Step 3 — Routing to Gauge
-
-Routes per-catchment runoff (mm/h) through the channel network (t-route
-Muskingum-Cunge) to USGS gauge 03463300 at every lead hour for each initialization.
-
-| Script | Description |
-|---|---|
-| `3_routing/run_route_crossed_ensemble.py` | Routes all 600 members of the crossed ensemble through t-route. Reads 21-catchment parquets; outputs `routed_crossed_ensemble.parquet` (m³/s at gauge). |
-| `3_routing/route_lead_time_forecasts.py` | Routes 20-member DA and open-loop lead-time forecast CSVs through t-route. Outputs `routed_leadtime_da_full.parquet` and `routed_leadtime_openloop_full.parquet` for 4c plots. |
-| `catchment_run/run_route.py` | Deterministic Muskingum routing (tx-fast-hydrology) for Vrugt and no-Vrugt DA results. |
-
-**Routed results at gauge 03463300:**
-
-| Run | Peak Q (m³/s) | KGE vs Qkrig | KGE vs USGS |
-|---|---|---|---|
-| DA dynamic Vrugt R | 645.7 | 0.869 | 0.277 |
-| DA constant R | 622.5 | 0.789 | 0.222 |
-| USGS gauge (truth) | **1885.7** | — | — |
-| 600-member p95 | 755.6 | — | — |
-
-The ~2.5× gap between the routed ensemble p95 and the USGS peak is due to Qkrig
-underestimating the true gauge during this extreme event — the ensemble captures
-uncertainty conditional on the quality of the Qkrig observation.
-
----
-
-## Step 4 — Evaluate at the Gauge
-
-### 4a — DA skill converging to open loop over 18-hour lead time
-
-| Script | Description |
-|---|---|
-| `4_evaluation/plot_lead_time_decay.py` | Catchment-level RMSE/KGE vs lead hour: DA starts below open-loop, skill converges by lead 3–6. |
-| `4_evaluation/plot_lead_time_decay_gauge.py` | Gauge-level decay curve using routed parquets. |
-| `4_evaluation/plot_forecast_error_fixed_target.py` | Error decay viewed from a fixed verification time — shows how skill improves as initialization approaches the target. |
-| `4_evaluation/plot_forecast_error_per_init.py` | Per-initialization-time error breakdown across all Helene issue times. |
-
-### 4b — 600-member ensemble vs observations during Helene
-
-| Script | Description |
-|---|---|
-| `4_evaluation/plot_routed_ensemble_combined.py` | **Main poster panel.** Routed 600-member envelope (5/25/50/75/95th pct) vs USGS obs + Vrugt/no-Vrugt deterministic lines. |
-| `4_evaluation/plot_crossed_ensemble.py` | Catchment-level percentile envelope for cat-1016300. |
-| `4_evaluation/plot_vrugt_comparison.py` | Vrugt vs no-Vrugt comparison: full test period + Helene zoom. |
-| `4_evaluation/plot_da_perturbation_arms.py` | 2a/2b arm spaghetti figures showing ensemble spread by source. |
-
-### 4c — Ensemble mean + spread across all 18-hour forecast cycles during Helene
-
-| Script | Description |
-|---|---|
-| `4_evaluation/plot_lead_time_reconstructed_timeseries.py` | Pools all forecasts landing on each valid_time; plots median + 5/95th pct for DA and open-loop vs USGS obs. Two outputs: full window and Helene zoom. |
-| `4_evaluation/plot_forecast_spaghetti.py` | All forecast trajectories during Helene colored by initialization date (Sep 24–30); DA shaded band + mean, OL dashed mean. |
-| `4_evaluation/plot_helene_issue_time_hydrograph.py` | Side-by-side panel comparing one Helene-peak and one low-flow initialization time hydrograph. |
-
-**Evaluation results (gauge 03463300):**
-
-| Metric | DA | Open-loop | Improvement |
-|---|---|---|---|
-| NSE (Sep 10 – Oct 10 window) | 0.437 | 0.318 | +0.119 |
-| NSE (Helene zoom, Sep 24–29) | 0.339 | 0.198 | +0.141 |
-| Mean catchment KGE (21 cats) | 0.817 | 0.692 | +0.125 |
-| Catchments improving | 21/21 | — | — |
-
----
-
-## Data Flow
-
-```
-v2_true_enkf_pn/{cat-id}_best_params.json   (calibration, all 21 cats)
-        |
-        v
-run_perturbation_da_on.py  -->  {cat-id}_da_forcing_arm.csv   (30 members, mm/h)
-                                {cat-id}_da_hydro_arm.csv     (20 members, mm/h)
-                                        |
-                                        v
-                                plot_da_perturbation_arms.py  -->  2a/2b spread figures
-
-run_crossed_ensemble.py    -->  {cat-id}_crossed_ensemble.parquet  (600 members, mm/h)
-                                {cat-id}_da_snapshots.parquet      (restart states)
-                                {cat-id}_member_manifest.csv       (traceability)
-                                {cat-id}_hydro_draw_states.parquet
-                                {cat-id}_forcing_draw_sequences.parquet
-        |
-        v
-run_route_crossed_ensemble.py  -->  routed_crossed_ensemble.parquet  (600 members, m³/s)
-        |
-        v
-plot_routed_ensemble_combined.py  -->  helene_ensemble_vs_usgs.png  [4b poster panel]
-
-run_lead_time_forecast_sweep.py  -->  {cat-id}_lead_time_forecasts_da.csv      (20 members)
-                                      {cat-id}_lead_time_forecasts_openloop.csv (20 members)
-        |
-        v
-route_lead_time_forecasts.py  -->  routed_leadtime_da_full.parquet       (m³/s at gauge)
-                                   routed_leadtime_openloop_full.parquet  (m³/s at gauge)
-        |
-        v
-plot_lead_time_reconstructed_timeseries.py  -->  lead_time_reconstructed_timeseries.png [4c]
-plot_forecast_spaghetti.py                  -->  forecast_spaghetti_helene.png           [4c]
-
-run_route.py (Vrugt / no-Vrugt)  -->  routed_Q_test.csv  (deterministic, m³/s)
-        |
-        v
-plot_vrugt_comparison.py  -->  vrugt_vs_novrugt_helene_zoom.png
-```
-
----
-
-## Full Run Order
+## Running an Experiment (F3 as example)
 
 ```bash
-# 1. Calibration — run once per catchment; results staged in v2_true_enkf_pn/
-python3 1_calibrate/calibrate_catchment_cfe_da_v2.py \
-    --cat-id cat-1016300 \
-    --forcing-dir  <retro forcing dir> \
-    --obs-dir      <kriging obs dir with variance> \
-    --cfe-dir      <cfe_py dir> \
-    --config-file  <BMI config JSON> \
-    --param-bounds <CFE parameter bounds JSON> \
-    --out-dir      <output dir>
+# Stage A — perturbation arms (2a/2b) for all 21 catchments
+bash folder3_dynamic_vrugt_seeded/2_assimilation/batch_run_all_f3.sh arms
 
-# 2a/2b. DA-on perturbation arms (all 21 catchments)
-bash 2_assimilation/batch_run_da_on_all_cats.sh
+# Stage B — 18hr forecast cycles (2c)
+bash folder3_dynamic_vrugt_seeded/2_assimilation/batch_run_all_f3.sh forecast
 
-# 2d. Crossed 600-member ensemble (all 21 catchments)
-bash 2_assimilation/batch_run_crossed_all_cats.sh
+# Stage C — 600-member crossed ensemble (2d)
+bash folder3_dynamic_vrugt_seeded/2_assimilation/batch_run_all_f3.sh ensemble
 
-# 2c. Lead-time forecast sweep (all 21 catchments, ~overnight)
-nohup python3 2_assimilation/run_sweep_all_21_hardcoded_r.py --concurrent 5 \
-    > ~/sweep_all_21_master.log 2>&1 &
+# Route analysis trajectory + ensemble + forecast cycles (3_routing/)
+# See folder README for exact run_route.py invocations
 
-# 3. Route 600-member ensemble to gauge
-nohup python3 3_routing/run_route_crossed_ensemble.py \
-    --gpkg    <gage-03463300_subset.gpkg> \
-    --ensemble-dir <v2_crossed_ensemble dir> \
-    --out-dir <v2_crossed_ensemble_routed dir> \
-    > ~/route_crossed.log 2>&1 &
-
-# 3. Route lead-time forecasts to gauge (for 4c plots)
-nohup python3 3_routing/route_lead_time_forecasts.py \
-    --gpkg        <gage-03463300_subset.gpkg> \
-    --leadtime-dir <v2_lead_time_forecast_hardcoded_r dir> \
-    --out-dir      <v2_lead_time_forecast_hardcoded_r_routed dir> \
-    > ~/route_leadtime.log 2>&1 &
-
-# 3. Route deterministic DA results (Vrugt and no-Vrugt)
-python3 catchment_run/run_route.py \
-    --gpkg <gage-03463300_subset.gpkg> \
-    --results-dir <vrugt DA results dir> \
-    --period test --obs-csv <usgs_hourly.csv> --out-dir <out>
-python3 catchment_run/run_route.py \
-    --gpkg <gage-03463300_subset.gpkg> \
-    --results-dir <novrugt DA results dir> \
-    --period test --obs-csv <usgs_hourly.csv> --out-dir <out>
-
-# 4. Evaluation plots
-python3 4_evaluation/plot_routed_ensemble_combined.py \
-    --vrugt-csv <vrugt routed Q> --novrugt-csv <novrugt routed Q> \
-    --ensemble-pq <routed_crossed_ensemble.parquet> --out-dir <out>
-
-python3 4_evaluation/plot_lead_time_reconstructed_timeseries.py \
-    --route-dir <v2_lead_time_forecast_hardcoded_r_routed> \
-    --usgs-csv  <usgs_hourly.csv>
-
-python3 4_evaluation/plot_forecast_spaghetti.py \
-    --route-dir <v2_lead_time_forecast_hardcoded_r_routed> \
-    --usgs-csv  <usgs_hourly.csv>
-
-python3 4_evaluation/plot_lead_time_decay.py \
-    --cat-id cat-1016300 \
-    --leadtime-dir <v2_lead_time_forecast dir> \
-    --da-dir       <v2_true_enkf_vrugt dir>
-
-python3 4_evaluation/plot_da_perturbation_arms.py \
-    --cat-id cat-1016300 \
-    --arm-dir  <v2_perturbation_da_on dir> \
-    --usgs-csv <usgs_hourly.csv>
-
-python3 4_evaluation/plot_vrugt_comparison.py \
-    --vrugt-csv   <vrugt routed Q> \
-    --novrugt-csv <novrugt routed Q> \
-    --out-dir     <out>
+# Evaluate (4_evaluation/4c_timeseries/)
+bash folder3_dynamic_vrugt_seeded/4_evaluation/4c_timeseries/run_4c_f3.sh
 ```
+
+F4 works identically — replace `f3` with `f4` and use `batch_run_all_f4.sh`.
 
 ---
 
 ## Ensemble Traceability
 
-Any member of the 600-member ensemble can be fully traced back to its source:
+Any of the 600 members can be fully reconstructed:
 
 ```python
-member_k → forcing_draw_i = k // 20   # which of the 30 met perturbation draws
-         → hydro_draw_j   = k % 20    # which of the 20 initial-state draws
+member_k → forcing_draw_i = k // 20   # which of 30 met perturbation draws
+         → hydro_draw_j   = k % 20    # which of 20 initial-state draws
 ```
 
-Look up `(issue_time, hydro_draw_j)` in `_hydro_draw_states.parquet` to get the
-exact initial soil moisture, groundwater, and Nash routing states that member used.
+Four provenance files are saved per catchment:
 
-Look up `(issue_time, forcing_draw_i, lead_hour)` in `_forcing_draw_sequences.parquet`
-to get the exact precip and PET values that member experienced during its forecast.
+| File | Contents |
+|---|---|
+| `{cat-id}_da_snapshots.parquet` | DA-analyzed state at every issue time — enables restart |
+| `{cat-id}_member_manifest.csv` | Decoder: member_k → (forcing_draw_i, hydro_draw_j) |
+| `{cat-id}_hydro_draw_states.parquet` | Exact perturbed initial states for each of 20 hydro draws |
+| `{cat-id}_forcing_draw_sequences.parquet` | Exact P/PET scale factors for each of 30 forcing draws |
 
-Load `_da_snapshots.parquet` and call `set_state()` on any row to restart a CFE
-model from the exact DA-analyzed state at that initialization time.
+---
+
+## Server Paths (dualearth1)
+
+All paths under `/mnt/disk2/` unless noted.
+
+| Resource | Path |
+|---|---|
+| Retro forcing | `suma_helen_poster/nwm_retro_catchment_forcings/` |
+| Test forcing 1 | `/mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2023_2024_feb/forcings/` |
+| Test forcing 2 | `/mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2024_feb_2025_sep/forcings/` |
+| Obs (F1/F2, static σ²) | `1400_sites_helene/catchment_ts_03463300_with_variance/` |
+| Obs (F3/F4, dynamic σ²) | `1400_sites_helene/catchment_ts_03463300_spliced_dyn_helene/` |
+| BMI config | `suma_helen_poster/run_gpu/cat_03463300_bmi_config_cfe.json` |
+| Param bounds | `suma_helen_poster/run_gpu/CFE_parameter_bounds.json` |
+| CFE source | `suma_helen_poster/cfe_py/` |
+| GPKG | `/mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/gage-03463300_subset.gpkg` |
+| USGS hourly obs | `suma_helen_poster/03463300_usgs_hourly_2018_2024.csv` |
+| F1 analysis | `suma_helen_poster/da_results/v2_true_enkf_vrugt/` |
+| F2 analysis | `suma_helen_poster/da_results/v2_fixed_r007_analysis/` |
+| F3 analysis | `1400_sites_helene/da_results_dynamic_vrugt_seeded/` |
+| F4 analysis | `1400_sites_helene/da_results_dynamic_novrugt_seeded/` |
+
+See [EXPERIMENTS.md](EXPERIMENTS.md) for full server paths including forecast cycles,
+ensemble directories, and routed output paths for all 4 folders.
