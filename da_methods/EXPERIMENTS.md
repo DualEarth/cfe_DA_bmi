@@ -42,7 +42,7 @@ worst across all metrics.
 | 3. Route crossed ensemble | ✅ | ✅ | ✅ | ✅ |
 | 4a. Error decay | ✅ | ✅ | ✅ | ✅ |
 | 4b. Ensemble vs obs | ✅ | ✅ | ✅ | ✅ |
-| 4c. Reconstructed timeseries | ✅ | ✅ | ⏳ | ⏳ |
+| 4c. Reconstructed timeseries | ✅ | ✅ | ✅ | ✅ |
 
 ---
 

@@ -456,6 +456,56 @@ def slide_f4_ensemble(prs):
               font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
 
 
+def slide_f3_reconstructed(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F3: Reconstructed Timeseries — Dynamic Vrugt Seeded",
+            "Overlapping-leads pool from 18-hr forecast cycles  |  DA median vs open-loop vs USGS")
+
+    _add_image(slide, FIGS_DIR / "f3_reconstructed_timeseries.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+
+def slide_f3_reconstructed_helene(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F3: Reconstructed Timeseries — Helene Zoom",
+            "Dynamic Vrugt seeded (seed=42)  |  Sep 24–29, 2024")
+
+    _add_image(slide, FIGS_DIR / "f3_reconstructed_timeseries_helene.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "F3 Helene KGE=+0.189  |  Peak 693.8 m³/s (37% of USGS 1885.7)",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
+def slide_f4_reconstructed(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F4: Reconstructed Timeseries — Direct σ²_krig",
+            "Overlapping-leads pool from 18-hr forecast cycles  |  DA median vs open-loop vs USGS")
+
+    _add_image(slide, FIGS_DIR / "f4_reconstructed_timeseries.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+
+def slide_f4_reconstructed_helene(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_DARK)
+    _header(slide, "F4: Reconstructed Timeseries — Helene Zoom",
+            "Direct σ²_krig (seed=42)  |  Sep 24–29, 2024")
+
+    _add_image(slide, FIGS_DIR / "f4_reconstructed_timeseries_helene.png",
+               Inches(0.3), Inches(1.1), width=Inches(12.7))
+
+    _add_text(slide,
+              "F4 Helene KGE=+0.132  |  Peak 667.9 m³/s (35% of USGS 1885.7)",
+              Inches(0.3), Inches(6.85), Inches(12.7), Inches(0.4),
+              font_size=11, color=C_GOLD, align=PP_ALIGN.CENTER)
+
+
 def slide_sensitivity_spaghetti(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _fill_bg(slide, C_DARK)
@@ -561,10 +611,18 @@ def main():
     print(" 22. F4 lead-time error decay")
     slide_f4_ensemble(prs)
     print(" 23. F4 ensemble at gauge")
+    slide_f3_reconstructed(prs)
+    print(" 24. F3 reconstructed timeseries (full)")
+    slide_f3_reconstructed_helene(prs)
+    print(" 25. F3 reconstructed timeseries (Helene)")
+    slide_f4_reconstructed(prs)
+    print(" 26. F4 reconstructed timeseries (full)")
+    slide_f4_reconstructed_helene(prs)
+    print(" 27. F4 reconstructed timeseries (Helene)")
     slide_sensitivity_spaghetti(prs)
-    print(" 24. Sensitivity spaghetti")
+    print(" 28. Sensitivity spaghetti")
     slide_summary(prs)
-    print(" 25. Summary")
+    print(" 29. Summary")
 
     prs.save(str(OUT_PATH))
     print(f"\nSaved: {OUT_PATH}")
@@ -591,8 +649,12 @@ def main():
         "compare_all_folders_helene.png",
         "f3_lead_time_decay_gauge_pooled.png",
         "f3_helene_ensemble_twopanel.png",
+        "f3_reconstructed_timeseries.png",
+        "f3_reconstructed_timeseries_helene.png",
         "f4_lead_time_decay_gauge_pooled.png",
         "f4_helene_ensemble_twopanel.png",
+        "f4_reconstructed_timeseries.png",
+        "f4_reconstructed_timeseries_helene.png",
         "helene_sensitivity_spaghetti_main.png",
     ]
     missing = [f for f in all_figs if not (FIGS_DIR / f).exists()]
