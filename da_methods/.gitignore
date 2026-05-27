@@ -1,2 +1,4 @@
 *.png
 !pptx_figures/*.png
+*.pdf
+~$*
