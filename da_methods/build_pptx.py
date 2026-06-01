@@ -20,6 +20,11 @@ from pptx.enum.text import PP_ALIGN
 # ── Paths ────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
 FIGS_DIR   = SCRIPT_DIR / "figures"
+F1    = FIGS_DIR / "f1_variance_scaled_vrugt"
+F2    = FIGS_DIR / "f2_fixed_r_007"
+F3    = FIGS_DIR / "f3_dynamic_vrugt_seeded"
+F4    = FIGS_DIR / "f4_dynamic_variance_direct"
+CROSS = FIGS_DIR / "cross_folder"
 OUT_PATH   = SCRIPT_DIR / "helene_da_results.pptx"
 
 # ── Slide dimensions  (16:9 widescreen) ──────────────────────────────────────
@@ -176,7 +181,7 @@ def slide_vrugt_grid(prs):
     _header(slide, "4a: Vrugt Dynamic R — Grid Search Comparison",
             "Best-fit α selected by KGE across full test period and Helene window")
 
-    _add_image(slide, FIGS_DIR / "helene_da_v2_vrugt_vs_run3_grid.png",
+    _add_image(slide, F1 / "helene_da_v2_vrugt_vs_run3_grid.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -191,7 +196,7 @@ def slide_vrugt_zoomed(prs):
     _header(slide, "4a: Vrugt R — Helene Window Zoom",
             "DA with α = 0.10 captures rising limb; both methods underestimate peak due to NWM forcing")
 
-    _add_image(slide, FIGS_DIR / "helene_da_v2_vrugt_vs_run3_grid_zoomed.png",
+    _add_image(slide, F1 / "helene_da_v2_vrugt_vs_run3_grid_zoomed.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -201,7 +206,7 @@ def slide_vrugt_kge_table(prs):
     _header(slide, "4a: KGE Summary Table — Vrugt α Comparison",
             "Columns: α value  |  Rows: full period / Helene window KGE")
 
-    _add_image(slide, FIGS_DIR / "da_v2_vrugt_kge_table.png",
+    _add_image(slide, F1 / "da_v2_vrugt_kge_table.png",
                Inches(1.5), Inches(1.2), width=Inches(10.3))
 
 
@@ -211,7 +216,7 @@ def slide_sensitivity_categories(prs):
     _header(slide, "Perturbation Category Sensitivity",
             "Shaded min-max bands: initial states (red) · meteorological forcings (blue) · hydrological states (green)")
 
-    _add_image(slide, FIGS_DIR / "cat-1016300_perturbation_categories_linear.png",
+    _add_image(slide, F1 / "cat-1016300_perturbation_categories_linear.png",
                Inches(0.2), Inches(1.1), width=Inches(12.9))
 
     _add_text(slide,
@@ -226,7 +231,7 @@ def slide_2a_forcing(prs):
     _header(slide, "2a: Forcing Arm — Meteorological Uncertainty Ensemble",
             "30 members  |  Lognormal precip σ = 15%  |  Normal PET σ = 10%  |  DA on")
 
-    _add_image(slide, FIGS_DIR / "cat-1016300_2a_forcing_arm_helene.png",
+    _add_image(slide, F1 / "cat-1016300_2a_forcing_arm_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -236,7 +241,7 @@ def slide_2b_hydro(prs):
     _header(slide, "2b: Hydro-State Arm — Initial State Uncertainty Ensemble",
             "20 members  |  5% multiplicative state perturbation  |  DA on")
 
-    _add_image(slide, FIGS_DIR / "cat-1016300_2b_hydro_arm_helene.png",
+    _add_image(slide, F1 / "cat-1016300_2b_hydro_arm_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -246,7 +251,7 @@ def slide_2ab_comparison(prs):
     _header(slide, "2a vs 2b: Which Uncertainty Source Dominates?",
             "Side-by-side arm comparison during Helene window")
 
-    _add_image(slide, FIGS_DIR / "cat-1016300_2ab_arms_comparison.png",
+    _add_image(slide, F1 / "cat-1016300_2ab_arms_comparison.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -261,7 +266,7 @@ def slide_production_ensemble(prs):
     _header(slide, "4b: 600-Member Crossed Ensemble — Production Forecast",
             "30 forcing × 20 hydro-state = 600 members  |  Routed to USGS gauge via T-route")
 
-    _add_image(slide, FIGS_DIR / "cat-1016300_production_ensemble_forecast_linear.png",
+    _add_image(slide, F1 / "cat-1016300_production_ensemble_forecast_linear.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -271,7 +276,7 @@ def slide_ensemble_gauge(prs):
     _header(slide, "4b: Ensemble Routing at Gauge 03463300",
             "Ensemble band (5–95 pct) + median vs USGS obs  |  Helene window highlighted")
 
-    _add_image(slide, FIGS_DIR / "helene_ensemble_vs_usgs.png",
+    _add_image(slide, F1 / "helene_ensemble_vs_usgs.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -286,7 +291,7 @@ def slide_ensemble_twopanel(prs):
     _header(slide, "4b: Full Period + Helene Zoom — Routed Ensemble",
             "Top: full test period  |  Bottom: Helene Sep 24–29 zoom")
 
-    _add_image(slide, FIGS_DIR / "helene_ensemble_twopanel.png",
+    _add_image(slide, F1 / "helene_ensemble_twopanel.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -296,7 +301,7 @@ def slide_spaghetti(prs):
     _header(slide, "4c: Lead-Time Forecasts — Spaghetti Plot",
             "18 forecast cycles × 20 ensemble members  |  DA vs Open-loop  |  Helene window")
 
-    _add_image(slide, FIGS_DIR / "forecast_spaghetti_helene.png",
+    _add_image(slide, F1 / "forecast_spaghetti_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -311,7 +316,7 @@ def slide_reconstructed_full(prs):
     _header(slide, "4c: Reconstructed Timeseries — Full Test Period",
             "All lead-time forecasts overlaid; ensemble mean vs USGS obs  |  NSE DA=0.437 vs OL=0.318")
 
-    _add_image(slide, FIGS_DIR / "lead_time_reconstructed_timeseries.png",
+    _add_image(slide, F1 / "lead_time_reconstructed_timeseries.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -321,7 +326,7 @@ def slide_reconstructed_helene(prs):
     _header(slide, "4c: Reconstructed Timeseries — Helene Zoom",
             "NSE DA=0.339  OL=0.198  |  DA adds +0.14 NSE  |  Sep 24–29")
 
-    _add_image(slide, FIGS_DIR / "lead_time_reconstructed_timeseries_helene.png",
+    _add_image(slide, F1 / "lead_time_reconstructed_timeseries_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -337,9 +342,9 @@ def slide_lead_decay(prs):
             "Fixed verification time view  |  Lead 1 = 1 hr before target  |  Lead 18 = 18 hr before target")
 
     # Try both possible names
-    img = FIGS_DIR / "error_fixed_target_mean.png"
+    img = F2 / "error_fixed_target_mean.png"
     if not img.exists():
-        img = FIGS_DIR / "lead_time_decay_gauge.png"
+        img = F2 / "lead_time_decay_gauge.png"
 
     _add_image(slide, img, Inches(0.3), Inches(1.1), width=Inches(12.7))
 
@@ -355,7 +360,7 @@ def slide_three_way(prs):
     _header(slide, "Three-Way Comparison: DA vs Qkrig vs USGS",
             "Does DA add value beyond simply routing the Qkrig observations?")
 
-    _add_image(slide, FIGS_DIR / "da_vs_qkrig_vs_usgs.png",
+    _add_image(slide, F1 / "da_vs_qkrig_vs_usgs.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -371,7 +376,7 @@ def slide_four_folder_full(prs):
     _header(slide, "R-Formula Comparison — All 4 Experiments (Full Period)",
             "F1 Vrugt (best) · F2 R=0.07 · F3 Dyn Vrugt seeded · F4 Direct σ²  |  at gauge 03463300")
 
-    _add_image(slide, FIGS_DIR / "compare_all_folders_full.png",
+    _add_image(slide, CROSS / "compare_all_folders_full.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -387,7 +392,7 @@ def slide_four_folder_helene(prs):
     _header(slide, "R-Formula Comparison — Helene Window",
             "F1 KGE=0.213 · F2 KGE=0.439 · F3 KGE=0.189 · F4 KGE=0.132  |  Fixed R=0.07 best at peak")
 
-    _add_image(slide, FIGS_DIR / "compare_all_folders_helene.png",
+    _add_image(slide, CROSS / "compare_all_folders_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -402,7 +407,7 @@ def slide_f3_lead_decay(prs):
     _header(slide, "F3: Forecast Error Decay — Dynamic Vrugt Seeded (seed=42)",
             "R = (0.10·y)² + 0.001·σ²_krig  |  Pooled across all regimes  |  Helene window")
 
-    _add_image(slide, FIGS_DIR / "f3_lead_time_decay_gauge_pooled.png",
+    _add_image(slide, F3 / "f3_lead_time_decay_gauge_pooled.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -417,7 +422,7 @@ def slide_f3_ensemble(prs):
     _header(slide, "F3: Ensemble Routing at Gauge — Dynamic Vrugt Seeded",
             "600-member crossed ensemble  |  5–95 pct band + median vs USGS  |  Helene window")
 
-    _add_image(slide, FIGS_DIR / "f3_helene_ensemble_twopanel.png",
+    _add_image(slide, F3 / "f3_helene_ensemble_twopanel.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -432,7 +437,7 @@ def slide_f4_lead_decay(prs):
     _header(slide, "F4: Forecast Error Decay — Direct σ²_krig (seed=42)",
             "R = σ²_krig directly (no Vrugt formula)  |  Pooled across all regimes")
 
-    _add_image(slide, FIGS_DIR / "f4_lead_time_decay_gauge_pooled.png",
+    _add_image(slide, F4 / "f4_lead_time_decay_gauge_pooled.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -447,7 +452,7 @@ def slide_f4_ensemble(prs):
     _header(slide, "F4: Ensemble Routing at Gauge — Direct σ²_krig",
             "600-member crossed ensemble  |  5–95 pct band + median vs USGS  |  Helene window")
 
-    _add_image(slide, FIGS_DIR / "f4_helene_ensemble_twopanel.png",
+    _add_image(slide, F4 / "f4_helene_ensemble_twopanel.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -462,7 +467,7 @@ def slide_f3_reconstructed(prs):
     _header(slide, "F3: Reconstructed Timeseries — Dynamic Vrugt Seeded",
             "Overlapping-leads pool from 18-hr forecast cycles  |  DA median vs open-loop vs USGS")
 
-    _add_image(slide, FIGS_DIR / "f3_reconstructed_timeseries.png",
+    _add_image(slide, F3 / "f3_reconstructed_timeseries.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -472,7 +477,7 @@ def slide_f3_reconstructed_helene(prs):
     _header(slide, "F3: Reconstructed Timeseries — Helene Zoom",
             "Dynamic Vrugt seeded (seed=42)  |  Sep 24–29, 2024")
 
-    _add_image(slide, FIGS_DIR / "f3_reconstructed_timeseries_helene.png",
+    _add_image(slide, F3 / "f3_reconstructed_timeseries_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -487,7 +492,7 @@ def slide_f4_reconstructed(prs):
     _header(slide, "F4: Reconstructed Timeseries — Direct σ²_krig",
             "Overlapping-leads pool from 18-hr forecast cycles  |  DA median vs open-loop vs USGS")
 
-    _add_image(slide, FIGS_DIR / "f4_reconstructed_timeseries.png",
+    _add_image(slide, F4 / "f4_reconstructed_timeseries.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -497,7 +502,7 @@ def slide_f4_reconstructed_helene(prs):
     _header(slide, "F4: Reconstructed Timeseries — Helene Zoom",
             "Direct σ²_krig (seed=42)  |  Sep 24–29, 2024")
 
-    _add_image(slide, FIGS_DIR / "f4_reconstructed_timeseries_helene.png",
+    _add_image(slide, F4 / "f4_reconstructed_timeseries_helene.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
     _add_text(slide,
@@ -512,7 +517,7 @@ def slide_sensitivity_spaghetti(prs):
     _header(slide, "Sensitivity Ensemble — Spaghetti (All Catchments)",
             "Each thin line = one catchment ensemble trajectory  |  Helene window")
 
-    _add_image(slide, FIGS_DIR / "helene_sensitivity_spaghetti_main.png",
+    _add_image(slide, F1 / "helene_sensitivity_spaghetti_main.png",
                Inches(0.3), Inches(1.1), width=Inches(12.7))
 
 
@@ -630,34 +635,34 @@ def main():
 
     # Report which figures were missing
     all_figs = [
-        "helene_da_v2_vrugt_vs_run3_grid.png",
-        "helene_da_v2_vrugt_vs_run3_grid_zoomed.png",
-        "da_v2_vrugt_kge_table.png",
-        "cat-1016300_perturbation_categories_linear.png",
-        "cat-1016300_2a_forcing_arm_helene.png",
-        "cat-1016300_2b_hydro_arm_helene.png",
-        "cat-1016300_2ab_arms_comparison.png",
-        "cat-1016300_production_ensemble_forecast_linear.png",
-        "helene_ensemble_vs_usgs.png",
-        "helene_ensemble_twopanel.png",
-        "forecast_spaghetti_helene.png",
-        "lead_time_reconstructed_timeseries.png",
-        "lead_time_reconstructed_timeseries_helene.png",
-        "error_fixed_target_mean.png",
-        "da_vs_qkrig_vs_usgs.png",
-        "compare_all_folders_full.png",
-        "compare_all_folders_helene.png",
-        "f3_lead_time_decay_gauge_pooled.png",
-        "f3_helene_ensemble_twopanel.png",
-        "f3_reconstructed_timeseries.png",
-        "f3_reconstructed_timeseries_helene.png",
-        "f4_lead_time_decay_gauge_pooled.png",
-        "f4_helene_ensemble_twopanel.png",
-        "f4_reconstructed_timeseries.png",
-        "f4_reconstructed_timeseries_helene.png",
-        "helene_sensitivity_spaghetti_main.png",
+        (F1, "helene_da_v2_vrugt_vs_run3_grid.png"),
+        (F1, "helene_da_v2_vrugt_vs_run3_grid_zoomed.png"),
+        (F1, "da_v2_vrugt_kge_table.png"),
+        (F1, "cat-1016300_perturbation_categories_linear.png"),
+        (F1, "cat-1016300_2a_forcing_arm_helene.png"),
+        (F1, "cat-1016300_2b_hydro_arm_helene.png"),
+        (F1, "cat-1016300_2ab_arms_comparison.png"),
+        (F1, "cat-1016300_production_ensemble_forecast_linear.png"),
+        (F1, "helene_ensemble_vs_usgs.png"),
+        (F1, "helene_ensemble_twopanel.png"),
+        (F1, "forecast_spaghetti_helene.png"),
+        (F1, "lead_time_reconstructed_timeseries.png"),
+        (F1, "lead_time_reconstructed_timeseries_helene.png"),
+        (F1, "helene_sensitivity_spaghetti_main.png"),
+        (F1, "da_vs_qkrig_vs_usgs.png"),
+        (F2, "error_fixed_target_mean.png"),
+        (F3, "f3_lead_time_decay_gauge_pooled.png"),
+        (F3, "f3_helene_ensemble_twopanel.png"),
+        (F3, "f3_reconstructed_timeseries.png"),
+        (F3, "f3_reconstructed_timeseries_helene.png"),
+        (F4, "f4_lead_time_decay_gauge_pooled.png"),
+        (F4, "f4_helene_ensemble_twopanel.png"),
+        (F4, "f4_reconstructed_timeseries.png"),
+        (F4, "f4_reconstructed_timeseries_helene.png"),
+        (CROSS, "compare_all_folders_full.png"),
+        (CROSS, "compare_all_folders_helene.png"),
     ]
-    missing = [f for f in all_figs if not (FIGS_DIR / f).exists()]
+    missing = [f"{folder.name}/{fn}" for folder, fn in all_figs if not (folder / fn).exists()]
     if missing:
         print(f"\nMissing {len(missing)} figure(s) — slides show placeholders:")
         for f in missing:
