@@ -10,6 +10,8 @@ Plots:
                (spread = met forcing uncertainty with DA-corrected initial states)
     Panel 2b — Hydro-state arm: 20-member spaghetti over Helene window
                (spread = initial state uncertainty with deterministic forcing)
+               Optional: --ol-csv overlays the open-loop grand median as a
+               thick dashed gray line for comparison.
     Panel 2c — Comparison: median ± spread envelope, both arms + USGS obs
 
 All trajectories projected to valid_time = issue_time + lead_hour hours.
@@ -59,6 +61,49 @@ def load_arm(path):
     df["valid_time"] = df["issue_time"] + pd.to_timedelta(df["lead_hour"], unit="h")
     member_cols = sorted([c for c in df.columns if c.startswith("member_")])
     return df, member_cols
+
+
+def load_openloop(path):
+    """Load open-loop lead-time file (CSV or Parquet) and return grand median
+    indexed by valid_time.
+
+    Accepts:
+      - routed_leadtime_openloop_full.parquet  (T-route output, m³/s, recommended)
+      - cat-*_lead_time_forecasts_openloop.csv (unrouted CFE mm/h, single catchment)
+
+    Returns a pd.Series (valid_time → median q in m³/s) clipped to plot window.
+    """
+    if path.endswith(".parquet"):
+        df = pd.read_parquet(path)
+    else:
+        df = pd.read_csv(path)
+
+    df["issue_time"] = pd.to_datetime(df["issue_time"])
+    if "valid_time" in df.columns:
+        df["valid_time"] = pd.to_datetime(df["valid_time"])
+    elif "lead_hour" in df.columns:
+        df["valid_time"] = (df["issue_time"]
+                            + pd.to_timedelta(df["lead_hour"], unit="h"))
+    else:
+        raise ValueError("Open-loop file must have valid_time or lead_hour column")
+
+    member_cols = sorted([c for c in df.columns if c.startswith("member_")])
+    mask = (df["valid_time"] >= PLOT_START) & (df["valid_time"] <= PLOT_END)
+    df = df[mask].copy()
+    if df.empty:
+        return pd.Series(dtype=float)
+
+    vals = df[member_cols].to_numpy(dtype=float)
+    # Only convert if values are clearly in mm/h (unrouted CFE output).
+    # Routed parquet is already in m³/s — do not convert.
+    if path.endswith(".csv") and np.nanmedian(vals[vals > 0]) < 5:
+        vals = vals * MM_H_TO_M3_S
+
+    df["q_grand_median"] = np.nanmedian(vals, axis=1)
+    series = (df.groupby("valid_time")["q_grand_median"]
+                .median()
+                .sort_index())
+    return series
 
 
 def load_usgs(usgs_csv):
@@ -186,6 +231,15 @@ def main():
     parser.add_argument("--cat-id",   default=DEFAULT_CAT_ID)
     parser.add_argument("--usgs-csv", default=DEFAULT_USGS_CSV)
     parser.add_argument("--out-dir",  default=None)
+    parser.add_argument(
+        "--ol-csv", default=None,
+        help=(
+            "Path to open-loop lead-time forecast CSV "
+            "(e.g. cat-1016300_lead_time_forecasts_openloop.csv). "
+            "When provided, the grand median is overlaid on panel 2b "
+            "as a thick dashed gray line."
+        ),
+    )
     args = parser.parse_args()
 
     cat_dir = os.path.join(args.arm_dir, args.cat_id)
@@ -242,6 +296,20 @@ def main():
                "Line = median per init time  |  Thick = grand mean"),
         label_stem="Hydro-state arm",
     )
+
+    # Optional open-loop overlay
+    if args.ol_csv:
+        print(f"Loading open-loop CSV: {args.ol_csv}")
+        ol_series = load_openloop(args.ol_csv)
+        if not ol_series.empty:
+            ax.plot(
+                ol_series.index, ol_series.values,
+                color="black", lw=2.5, ls="--", alpha=0.95, zorder=7,
+                label="Open loop (no DA) — grand median",
+            )
+        else:
+            print("  Warning: open-loop CSV yielded no data in plot window.")
+
     patches = [mpatches.Patch(color=c, label=f"Init {d}")
                for d, c in DATE_COLORS.items()]
     handles, labels = ax.get_legend_handles_labels()
