@@ -19,7 +19,7 @@ from pptx.enum.text import PP_ALIGN
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
-FIGS_DIR   = SCRIPT_DIR / "pptx_figures"
+FIGS_DIR   = SCRIPT_DIR / "figures"
 OUT_PATH   = SCRIPT_DIR / "helene_da_results.pptx"
 
 # ── Slide dimensions  (16:9 widescreen) ──────────────────────────────────────
