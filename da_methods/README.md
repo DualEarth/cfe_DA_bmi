@@ -9,6 +9,47 @@
 
 ---
 
+## What Makes This Setup Different
+
+### Distributed CFE — not lumped
+
+CFE is run as **21 independent instances — one per catchment** in the South Toe River
+watershed. Each instance has its own calibrated parameters (`best_params.json`), its own
+NWM per-catchment forcings, and its own runoff output.
+
+This is different from the lumped CFE configuration used in earlier work (e.g. summer
+institute projects), where a single CFE instance represents the entire watershed with
+one parameter set and one forcing input. The distributed setup captures spatial
+variability in soil, land cover, and catchment response that a lumped model cannot.
+
+### Custom T-route wrapper — not ngen-troute
+
+Two T-route use cases exist in this repo, both using a **custom wrapper** that calls
+T-route's Muskingum-Cunge routing function (`compute_network_structured`) directly:
+
+| Approach | What initializes T-route | When used |
+|---|---|---|
+| **Qkrig → T-route** | Kriged streamflow pseudo-observations | Evaluate kriging directly as routing input |
+| **Distributed CFE → T-route** | Per-catchment CFE runoff (mm/h) | Evaluate calibrated + DA-corrected CFE |
+
+Both differ from **ngen-troute** — the standard T-route integration inside the full
+NextGen framework — which expects NWM-formatted YAML configs and full hydrofabric
+network inputs. The custom wrapper was built because the CFE-BMI DA pipeline outputs
+per-catchment CSVs that are incompatible with the ngen-troute CLI interface.
+
+### DA builds on top
+
+The EnKF data assimilation layer (this repo's primary contribution) sits on top of
+distributed CFE and the custom T-route wrapper:
+
+```
+Layer 1 — Distributed CFE          per-catchment runoff (21 instances)
+Layer 2 — Custom T-route wrapper   routes CFE or Qkrig output to outlet
+Layer 3 — EnKF DA                  corrects CFE states using Qkrig observations
+```
+
+---
+
 ## Pipeline Design
 
 ### 1. Calibrate CFE with Qkrig
