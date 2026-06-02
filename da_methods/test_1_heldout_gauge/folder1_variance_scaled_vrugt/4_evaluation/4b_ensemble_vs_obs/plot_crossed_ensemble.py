@@ -215,7 +215,7 @@ def main():
 
     fig.suptitle(
         f"4b -- 600-member crossed ensemble vs USGS 03463300 | {args.cat_id}\n"
-        "30 met forcing draws x 20 DA analysis state draws | R=0.07 mm2/h2",
+        "30 met forcing draws x 20 DA analysis state draws | R = (0.10·Q)² + 0.001·σ²_krig  (Vrugt)",
         fontsize=12, y=1.01,
     )
     plt.tight_layout()

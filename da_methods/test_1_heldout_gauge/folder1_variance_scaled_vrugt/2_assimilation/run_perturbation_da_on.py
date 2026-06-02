@@ -210,7 +210,7 @@ def main():
     parser.add_argument("--out-dir",           required=True)
     parser.add_argument("--test-forcing-dir1", default=None)
     parser.add_argument("--test-forcing-dir2", default=None)
-    parser.add_argument("--hardcoded-r",       type=float, default=0.07)
+    parser.add_argument("--hardcoded-r",       type=float, default=None)
     args = parser.parse_args()
 
     CAT_ID          = args.cat_id

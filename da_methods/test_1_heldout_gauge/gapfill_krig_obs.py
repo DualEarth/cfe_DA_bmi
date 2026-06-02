@@ -4,8 +4,10 @@ gapfill_krig_obs.py
 Cleans per-catchment Qkrig CSVs:
   1. Drops all rows where date is 2019-01-01 (leading NaN day)
   2. Linear-interpolates any remaining isolated interior NaN hours
-  3. Resets the timestep index
+  3. Renames columns to match calibration script format: datetime, qkrig, variance
   4. Overwrites files in-place (or writes to --out-dir if given)
+
+Output columns: datetime, qkrig (mm/h), variance
 
 Usage:
     python gapfill_krig_obs.py --obs-dir /mnt/disk2/1400_sites_helene/catchment_ts_no_03463300_with_variance
@@ -13,7 +15,6 @@ Usage:
 """
 
 import argparse
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -36,12 +37,13 @@ def gapfill(path_in: Path, path_out: Path) -> dict:
     df["qkrig_variance"] = df["qkrig_variance"].interpolate(method="linear", limit=48, limit_direction="both")
     nan_after = df["qkrig_mm_hr"].isna().sum()
 
-    # Step 3 — reset timestep
+    # Step 3 — rename to match calibration script expected format
     df = df.reset_index(drop=True)
-    df["timestep"] = df.index
-
-    # Reorder columns
-    df = df[["timestep", "time", "qkrig_mm_hr", "qkrig_variance"]]
+    df = df.rename(columns={
+        "time": "datetime",
+        "qkrig_mm_hr": "qkrig",
+        "qkrig_variance": "variance",
+    })[["datetime", "qkrig", "variance"]]
 
     path_out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path_out, index=False)
