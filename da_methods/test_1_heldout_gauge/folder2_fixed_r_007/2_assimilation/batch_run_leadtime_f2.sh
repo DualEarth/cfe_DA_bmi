@@ -68,6 +68,7 @@ for CAT in "${CATS[@]}"; do
         --enkf-members 20                   \
         --base-step-h 6                     \
         --hardcoded-r 0.07                  \
+        --prod-script       "$SCRIPT_DIR/calibrate_catchment_cfe_da_v2.py" \
     && DONE=$((DONE + 1)) \
     || { echo "  FAILED: $CAT"; FAIL=$((FAIL + 1)); }
 done

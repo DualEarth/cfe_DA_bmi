@@ -61,6 +61,7 @@ for CAT in "${CATS[@]}"; do
         --test-forcing-dir1 "$FORCING_DIR1" \
         --test-forcing-dir2 "$FORCING_DIR2" \
         --enkf-members 20                   \
+        --prod-script       "$SCRIPT_DIR/calibrate_catchment_cfe_da_v2.py" \
     && DONE=$((DONE + 1)) \
     || { echo "  FAILED: $CAT"; FAIL=$((FAIL + 1)); }
 done
