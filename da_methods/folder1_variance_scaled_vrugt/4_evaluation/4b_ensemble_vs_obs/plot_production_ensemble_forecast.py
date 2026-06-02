@@ -5,7 +5,7 @@ Plots all 20 production-per-member streamflow trajectories overlaid on a
 single time-series panel, with the Hurricane Helene window highlighted by a
 pink shaded vertical band and the Qkrig observation drawn on top in black.
 
-Inspired by Battula et al. ensemble-forecast figure style (50/100/200 km
+Ensemble forecast figure style (50/100/200 km
 variogram-range ensemble panels): every member as a thin colored line, storm
 window shaded, observation as a thick dark series, optional log-scaled y-axis.
 

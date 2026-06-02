@@ -9,7 +9,7 @@ Three categories:
 For each category, all 20 ensemble members are shown as a shaded band
 (min-max envelope fill) plus a thicker median line in the same color.
 Qkrig observation overlaid in black. Hurricane Helene peak window shaded
-in pink. Styled after the Battula et al. ensemble-forecast figure.
+in pink. Styled after a standard ensemble-forecast figure layout.
 
 Inputs (existing per-source sensitivity CSVs from run_perturbation_sensitivity.py):
     <SEN-DIR>/<CAT>/<CAT>_sensitivity_init.csv      (20 members, init only)
