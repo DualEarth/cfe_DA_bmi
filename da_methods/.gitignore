@@ -1,5 +1,6 @@
 *.png
 !figures/**/*.png
+!**/figures/**/*.png
 *.pdf
 *.pptx
 __pycache__/
