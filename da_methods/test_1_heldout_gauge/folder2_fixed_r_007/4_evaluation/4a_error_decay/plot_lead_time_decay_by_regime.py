@@ -58,7 +58,15 @@ def load_forecasts(path):
     return df, member_cols
 
 
+OBS_DIR = None  # set by main() when --obs-dir is supplied
+
+
 def load_obs():
+    if OBS_DIR is not None:
+        obs_path = os.path.join(OBS_DIR, f"{CAT}.csv")
+        df = pd.read_csv(obs_path, parse_dates=['date'])
+        col = 'qkrig' if 'qkrig' in df.columns else 'obs_mm_h'
+        return df.set_index('date')[col].rename('obs_mm_h')
     obs_path = os.path.join(DA_DIR, CAT, f"{CAT}_test_results.csv")
     df = pd.read_csv(obs_path, parse_dates=['date'])
     return df.set_index('date')['obs_mm_h']
@@ -151,12 +159,16 @@ def main():
                         help='Dir holding <cat>/<cat>_lead_time_forecasts_{da,openloop}.csv')
     parser.add_argument('--da-dir',        default=DEFAULT_DA_DIR,
                         help='Dir holding <cat>/<cat>_test_results.csv (for obs)')
+    parser.add_argument('--obs-dir',       default=None,
+                        help='Kriging obs dir holding <cat>.csv with qkrig column; '
+                             'overrides --da-dir for obs loading')
     args = parser.parse_args()
 
-    global CAT, LEADTIME_DIR, DA_DIR, OUT_PNG
+    global CAT, LEADTIME_DIR, DA_DIR, OBS_DIR, OUT_PNG
     CAT = args.cat_id
     LEADTIME_DIR = args.leadtime_dir
     DA_DIR       = args.da_dir
+    OBS_DIR      = args.obs_dir
     OUT_PNG      = os.path.join(LEADTIME_DIR, CAT, f"{CAT}_lead_time_decay_by_regime.png")
 
     da_path = os.path.join(LEADTIME_DIR, CAT, f"{CAT}_lead_time_forecasts_da.csv")
