@@ -131,10 +131,10 @@ def plot_panel(ax, obs_dates, obs_vals, log_y=False):
 
 
 def main():
+    global CAT, OUT_LINEAR, OUT_LOG
     parser = argparse.ArgumentParser()
     parser.add_argument('--cat-id', default=CAT)
     args = parser.parse_args()
-    global CAT, OUT_LINEAR, OUT_LOG
     CAT = args.cat_id
     OUT_LINEAR = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_linear.png")
     OUT_LOG    = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_log.png")

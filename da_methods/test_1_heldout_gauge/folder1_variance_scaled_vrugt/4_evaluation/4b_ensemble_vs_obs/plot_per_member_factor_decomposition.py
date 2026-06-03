@@ -72,10 +72,10 @@ def load_obs():
 
 
 def main():
+    global CAT, OUT_PNG
     parser = argparse.ArgumentParser()
     parser.add_argument('--cat-id', default=CAT)
     args = parser.parse_args()
-    global CAT, OUT_PNG
     CAT = args.cat_id
     OUT_PNG = os.path.join(PROD_DIR, CAT, f"{CAT}_per_member_factor_decomp.png")
 

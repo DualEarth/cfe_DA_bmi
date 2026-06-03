@@ -61,10 +61,10 @@ def kge_score(obs, sim):
 
 
 def main():
+    global CAT, OUT_LINEAR, OUT_LOG
     parser = argparse.ArgumentParser()
     parser.add_argument('--cat-id', default=CAT)
     args = parser.parse_args()
-    global CAT, OUT_LINEAR, OUT_LOG
     CAT = args.cat_id
     OUT_LINEAR = os.path.join(PROD_DIR, CAT, f"{CAT}_production_ensemble_forecast_linear.png")
     OUT_LOG    = os.path.join(PROD_DIR, CAT, f"{CAT}_production_ensemble_forecast_log.png")
