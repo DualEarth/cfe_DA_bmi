@@ -281,6 +281,13 @@ def main():
             "openloop run).  Overlaid on panel 2b as a thick dashed black line."
         ),
     )
+    parser.add_argument(
+        "--ymax", type=float, default=None,
+        help=(
+            "Hard y-axis upper limit (m³/s) applied to panels 2a, 2b, and 2ab. "
+            "Use to clip explosive outlier members (e.g. --ymax 2200 for F2)."
+        ),
+    )
     args = parser.parse_args()
 
     cat_dir = os.path.join(args.arm_dir, args.cat_id)
@@ -318,6 +325,8 @@ def main():
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles=handles + patches,
               fontsize=8, loc="upper left", frameon=True, framealpha=0.9, ncol=2)
+    if args.ymax is not None:
+        ax.set_ylim(bottom=0, top=args.ymax)
     plt.tight_layout()
     out_a = os.path.join(out_dir, f"{args.cat_id}_2a_forcing_arm_helene.png")
     plt.savefig(out_a, dpi=160, bbox_inches="tight")
@@ -369,6 +378,8 @@ def main():
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles=handles + patches,
               fontsize=8, loc="upper left", frameon=True, framealpha=0.9, ncol=2)
+    if args.ymax is not None:
+        ax.set_ylim(bottom=0, top=args.ymax)
     plt.tight_layout()
     out_b = os.path.join(out_dir, f"{args.cat_id}_2b_hydro_arm_helene.png")
     plt.savefig(out_b, dpi=160, bbox_inches="tight")
@@ -418,6 +429,8 @@ def main():
     )
     ax.legend(fontsize=9, loc="upper left", frameon=True, framealpha=0.9)
     _format_xaxis(ax)
+    if args.ymax is not None:
+        ax.set_ylim(bottom=0, top=args.ymax)
     plt.tight_layout()
     out_c = os.path.join(out_dir, f"{args.cat_id}_2ab_arms_comparison.png")
     plt.savefig(out_c, dpi=160, bbox_inches="tight")
