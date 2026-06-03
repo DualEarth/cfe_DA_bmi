@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate hydro-state arm plots (2b_hydro_arm_helene.png) for F1, F2, F4
+# Generate hydro-state arm plots (2b_hydro_arm_helene.png) for F1, F2, F4, F5
 # of the 1-gauge holdout experiment — all 21 catchments per experiment.
 #
 # Reads _da_hydro_arm.csv and _da_forcing_arm.csv from each experiment's dir.
@@ -26,8 +26,9 @@ declare -A EXPS
 EXPS["F1"]=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt
 EXPS["F2"]=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder2_fixed_r007
 EXPS["F4"]=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder4_dynamic_variance_direct
+EXPS["F5"]=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder5_rekrig_variance_direct
 
-for EXP in F1 F2 F4; do
+for EXP in F1 F2 F4 F5; do
     ARM_DIR="${EXPS[$EXP]}"
     echo ""
     echo "======================================="
