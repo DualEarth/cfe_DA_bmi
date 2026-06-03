@@ -247,13 +247,24 @@ def main():
             df = df.set_index('date').sort_index()
             cat_series[sid] = df['sim_mm_h'].astype(float)
             continue
-        # Fallback: use ensemble median from production per-member CSV
+        # Fallback 1: use ensemble median from production per-member CSV
         p_prod = os.path.join(args.da_dir, cat, f'{cat}_production_per_member.csv')
         if os.path.exists(p_prod):
             df = pd.read_csv(p_prod, parse_dates=['date'])
             df = df.set_index('date').sort_index()
             mem_cols = [c for c in df.columns if c.startswith('member_')]
             cat_series[sid] = df[mem_cols].median(axis=1).astype(float)
+            continue
+        # Fallback 2: reconstruct nowcast from forcing arm lead_hour=1
+        # valid_time = issue_time + 1h; covers only the Helene assimilation window
+        p_arm = os.path.join(args.da_dir, cat, f'{cat}_da_forcing_arm.csv')
+        if os.path.exists(p_arm):
+            df = pd.read_csv(p_arm, parse_dates=['issue_time'])
+            now = df[df['lead_hour'] == 1].copy()
+            now['valid_time'] = now['issue_time'] + pd.Timedelta(hours=1)
+            now = now.set_index('valid_time').sort_index()
+            mem_cols = [c for c in now.columns if c.startswith('member_')]
+            cat_series[sid] = now[mem_cols].median(axis=1).astype(float)
             continue
         missing.append(cat)
 
