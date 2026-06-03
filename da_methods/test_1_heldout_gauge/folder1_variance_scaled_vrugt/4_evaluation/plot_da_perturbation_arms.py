@@ -63,6 +63,39 @@ def load_arm(path):
     return df, member_cols
 
 
+def load_openloop_ts(path):
+    """Load a simple timeseries CSV (e.g. *_test_results.csv) and return a
+    pd.Series (datetime index → discharge m³/s) clipped to the plot window.
+
+    Expects columns: a time column ('time', 'datetime', etc.) and a discharge
+    column ('sim_mm_h' or similar).  Values in mm/h are converted to m³/s.
+    """
+    df = pd.read_csv(path)
+    time_col = next(
+        (c for c in df.columns
+         if c.lower() in ("time", "datetime", "date", "timestamp")),
+        None,
+    )
+    if time_col is None:
+        raise ValueError(f"No time column found in {path}")
+    df[time_col] = pd.to_datetime(df[time_col])
+
+    sim_col = next(
+        (c for c in df.columns
+         if "sim" in c.lower() and ("mm" in c.lower() or "q" in c.lower())),
+        None,
+    )
+    if sim_col is None:
+        sim_col = next((c for c in df.columns if "sim" in c.lower()), None)
+    if sim_col is None:
+        raise ValueError(f"No sim column found in {path}")
+
+    series = df.set_index(time_col)[sim_col].astype(float)
+    if "mm" in sim_col.lower():
+        series = series * MM_H_TO_M3_S
+    return series.loc[PLOT_START:PLOT_END]
+
+
 def load_openloop(path):
     """Load open-loop lead-time file (CSV or Parquet) and return grand median
     indexed by valid_time.
@@ -240,6 +273,14 @@ def main():
             "as a thick dashed gray line."
         ),
     )
+    parser.add_argument(
+        "--ol-ts-csv", default=None,
+        help=(
+            "Path to a simple open-loop timeseries CSV with 'time' and "
+            "'sim_mm_h' columns (e.g. cat-*_test_results.csv from the "
+            "openloop run).  Overlaid on panel 2b as a thick dashed black line."
+        ),
+    )
     args = parser.parse_args()
 
     cat_dir = os.path.join(args.arm_dir, args.cat_id)
@@ -297,7 +338,7 @@ def main():
         label_stem="Hydro-state arm",
     )
 
-    # Optional open-loop overlay
+    # Optional open-loop overlay — lead-time forecast format
     if args.ol_csv:
         print(f"Loading open-loop CSV: {args.ol_csv}")
         ol_series = load_openloop(args.ol_csv)
@@ -309,6 +350,19 @@ def main():
             )
         else:
             print("  Warning: open-loop CSV yielded no data in plot window.")
+
+    # Optional open-loop overlay — simple timeseries format (*_test_results.csv)
+    if args.ol_ts_csv:
+        print(f"Loading open-loop timeseries: {args.ol_ts_csv}")
+        ol_ts = load_openloop_ts(args.ol_ts_csv)
+        if not ol_ts.empty:
+            ax.plot(
+                ol_ts.index, ol_ts.values,
+                color="black", lw=2.5, ls="--", alpha=0.95, zorder=7,
+                label="Open loop (no DA) — grand median",
+            )
+        else:
+            print("  Warning: open-loop timeseries CSV yielded no data in plot window.")
 
     patches = [mpatches.Patch(color=c, label=f"Init {d}")
                for d, c in DATE_COLORS.items()]
