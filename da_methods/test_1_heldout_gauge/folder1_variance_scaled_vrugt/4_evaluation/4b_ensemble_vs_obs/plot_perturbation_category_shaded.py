@@ -21,6 +21,7 @@ Outputs:
     <SEN-DIR>/<CAT>/<CAT>_perturbation_categories_linear.png
     <SEN-DIR>/<CAT>/<CAT>_perturbation_categories_log.png
 """
+import argparse
 import os
 import pandas as pd
 import numpy as np
@@ -30,8 +31,8 @@ import matplotlib.patches as mpatches
 
 CAT = "cat-1016300"
 
-SEN_DIR = "/mnt/disk2/suma_helen_poster/da_results/v2_sensitivity"
-OBS_DIR = "/mnt/disk2/1400_sites_helene/catchment_ts_03463300_with_variance"
+SEN_DIR = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+OBS_DIR = "/home/svyas/catchment_ts_no_03463300_gapfilled"
 
 OUT_LINEAR = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_linear.png")
 OUT_LOG    = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_log.png")
@@ -65,8 +66,10 @@ def load_obs():
     p = os.path.join(OBS_DIR, f"{CAT}.csv")
     if not os.path.exists(p):
         return None, None
-    df = pd.read_csv(p, parse_dates=["date"])
-    return df["date"].values, df["qkrig"].values
+    df = pd.read_csv(p)
+    time_col = 'datetime' if 'datetime' in df.columns else 'date'
+    df[time_col] = pd.to_datetime(df[time_col])
+    return df[time_col].values, df["qkrig"].values
 
 
 def plot_panel(ax, obs_dates, obs_vals, log_y=False):
@@ -128,6 +131,14 @@ def plot_panel(ax, obs_dates, obs_vals, log_y=False):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cat-id', default=CAT)
+    args = parser.parse_args()
+    global CAT, OUT_LINEAR, OUT_LOG
+    CAT = args.cat_id
+    OUT_LINEAR = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_linear.png")
+    OUT_LOG    = os.path.join(SEN_DIR, CAT, f"{CAT}_perturbation_categories_log.png")
+
     obs_dates, obs_vals = load_obs()
 
     # ----- Linear-y -----

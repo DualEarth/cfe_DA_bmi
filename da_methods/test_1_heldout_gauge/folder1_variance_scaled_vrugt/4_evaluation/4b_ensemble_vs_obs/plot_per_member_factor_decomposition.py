@@ -24,6 +24,7 @@ Inputs (per catchment):
 Output:
   <prod-dir>/<cat-id>/<cat-id>_per_member_factor_decomp.png
 """
+import argparse
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -32,9 +33,10 @@ import matplotlib.dates as mdates
 # ---------- Configuration ----------
 CAT = "cat-1016300"           # change here to do a different catchment
 
-PROD_DIR = "/mnt/disk2/suma_helen_poster/da_results/v2_production_per_member"
-SEN_DIR  = "/mnt/disk2/suma_helen_poster/da_results/v2_sensitivity"
-DA_DIR   = "/mnt/disk2/suma_helen_poster/da_results/v2_true_enkf_vrugt"
+PROD_DIR = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+SEN_DIR  = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+DA_DIR   = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+OBS_DIR  = "/home/svyas/catchment_ts_no_03463300_gapfilled"
 OUT_PNG  = os.path.join(PROD_DIR, CAT, f"{CAT}_per_member_factor_decomp.png")
 
 ZOOM_START = pd.Timestamp("2024-09-24")
@@ -56,6 +58,12 @@ def load_member_csv(path):
 
 
 def load_obs():
+    obs_p = os.path.join(OBS_DIR, f"{CAT}.csv")
+    if os.path.exists(obs_p):
+        df = pd.read_csv(obs_p)
+        time_col = 'datetime' if 'datetime' in df.columns else 'date'
+        df[time_col] = pd.to_datetime(df[time_col])
+        return df[time_col].values, df["qkrig"].values
     p = os.path.join(DA_DIR, CAT, f"{CAT}_test_results.csv")
     if not os.path.exists(p):
         return None, None
@@ -64,6 +72,13 @@ def load_obs():
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cat-id', default=CAT)
+    args = parser.parse_args()
+    global CAT, OUT_PNG
+    CAT = args.cat_id
+    OUT_PNG = os.path.join(PROD_DIR, CAT, f"{CAT}_per_member_factor_decomp.png")
+
     prod_dates, prod = load_member_csv(os.path.join(PROD_DIR, CAT, f"{CAT}_production_per_member.csv"))
     init_dates, init = load_member_csv(os.path.join(SEN_DIR,  CAT, f"{CAT}_sensitivity_init.csv"))
     forc_dates, forc = load_member_csv(os.path.join(SEN_DIR,  CAT, f"{CAT}_sensitivity_forcing.csv"))

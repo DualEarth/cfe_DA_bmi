@@ -18,6 +18,7 @@ Outputs:
   <PROD-DIR>/<CAT>/<CAT>_production_ensemble_forecast_log.png
 """
 
+import argparse
 import os
 import pandas as pd
 import numpy as np
@@ -29,8 +30,9 @@ from matplotlib import cm
 # ----- Configuration -----
 CAT = "cat-1016300"
 
-PROD_DIR = "/mnt/disk2/suma_helen_poster/da_results/v2_production_per_member"
-DA_DIR   = "/mnt/disk2/suma_helen_poster/da_results/v2_true_enkf_vrugt"
+PROD_DIR = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+DA_DIR   = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+OBS_DIR  = "/home/svyas/catchment_ts_no_03463300_gapfilled"
 
 # Plot window: a few weeks around Helene so the storm is in context
 PLOT_START = pd.Timestamp("2024-09-20")
@@ -59,27 +61,40 @@ def kge_score(obs, sim):
 
 
 def main():
-    prod_path = os.path.join(PROD_DIR, CAT, f"{CAT}_production_per_member.csv")
-    obs_path  = os.path.join(DA_DIR,   CAT, f"{CAT}_test_results.csv")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cat-id', default=CAT)
+    args = parser.parse_args()
+    global CAT, OUT_LINEAR, OUT_LOG
+    CAT = args.cat_id
+    OUT_LINEAR = os.path.join(PROD_DIR, CAT, f"{CAT}_production_ensemble_forecast_linear.png")
+    OUT_LOG    = os.path.join(PROD_DIR, CAT, f"{CAT}_production_ensemble_forecast_log.png")
 
+    prod_path = os.path.join(PROD_DIR, CAT, f"{CAT}_production_per_member.csv")
     if not os.path.exists(prod_path):
         raise FileNotFoundError(
             f"Missing {prod_path}. Run run_production_per_member.py for {CAT} first.")
-    if not os.path.exists(obs_path):
-        print(f"Note: {obs_path} not found; will plot without observation overlay.")
 
     prod_df = pd.read_csv(prod_path, parse_dates=["date"])
     member_cols = sorted([c for c in prod_df.columns if c.startswith("member_")])
     member_arr  = prod_df[member_cols].to_numpy(dtype=float)
     dates       = pd.to_datetime(prod_df["date"].values)
 
-    if os.path.exists(obs_path):
-        obs_df = pd.read_csv(obs_path, parse_dates=["date"])
+    obs_dates = None
+    obs_vals  = None
+    obs_krig = os.path.join(OBS_DIR, f"{CAT}.csv")
+    obs_tr   = os.path.join(DA_DIR, CAT, f"{CAT}_test_results.csv")
+    if os.path.exists(obs_krig):
+        df = pd.read_csv(obs_krig)
+        time_col = 'datetime' if 'datetime' in df.columns else 'date'
+        df[time_col] = pd.to_datetime(df[time_col])
+        obs_dates = df[time_col].values
+        obs_vals  = df["qkrig"].values
+    elif os.path.exists(obs_tr):
+        obs_df = pd.read_csv(obs_tr, parse_dates=["date"])
         obs_dates = pd.to_datetime(obs_df["date"].values)
         obs_vals  = obs_df["obs_mm_h"].values
     else:
-        obs_dates = None
-        obs_vals  = None
+        print(f"Note: no obs found for {CAT}; plotting without observation overlay.")
 
     # Compute per-member peak (within plot window) for the legend label
     pw_mask = (dates >= PLOT_START) & (dates <= PLOT_END)

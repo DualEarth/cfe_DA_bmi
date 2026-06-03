@@ -37,10 +37,11 @@ ALL_CATS = [
 
 MAIN_CATS = ["cat-1016311", "cat-1016300", "cat-1016302"]
 
-DA_DIR  = "/mnt/disk2/suma_helen_poster/da_results/v2_true_enkf_vrugt"
-SEN_DIR = "/mnt/disk2/suma_helen_poster/da_results/v2_sensitivity"
-MAIN_PNG     = "/mnt/disk2/suma_helen_poster/da_results/v2_sensitivity/helene_sensitivity_spread_main.png"
-APPENDIX_PNG = "/mnt/disk2/suma_helen_poster/da_results/v2_sensitivity/helene_sensitivity_spread_appendix.png"
+DA_DIR  = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+SEN_DIR = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt"
+OBS_DIR = "/home/svyas/catchment_ts_no_03463300_gapfilled"
+MAIN_PNG     = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt/helene_sensitivity_spread_main.png"
+APPENDIX_PNG = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt/helene_sensitivity_spread_appendix.png"
 
 ZOOM_START = pd.Timestamp("2024-09-24")
 ZOOM_END   = pd.Timestamp("2024-09-28")
@@ -74,7 +75,12 @@ def load_member_spread(cat, source):
 
 
 def load_qkrig_obs(cat):
-    """Loads the Qkrig observation timeseries from the production-run CSV."""
+    obs_p = os.path.join(OBS_DIR, f"{cat}.csv")
+    if os.path.exists(obs_p):
+        df = pd.read_csv(obs_p)
+        time_col = 'datetime' if 'datetime' in df.columns else 'date'
+        df[time_col] = pd.to_datetime(df[time_col])
+        return df[time_col].values, df["qkrig"].values
     path = os.path.join(DA_DIR, cat, f"{cat}_test_results.csv")
     if not os.path.exists(path):
         return None, None
