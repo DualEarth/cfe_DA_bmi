@@ -242,15 +242,23 @@ def main():
     for cat in CATS:
         sid = int(cat[4:])
         p   = os.path.join(args.da_dir, cat, f'{cat}_test_results.csv')
-        if not os.path.exists(p):
-            missing.append(cat)
+        if os.path.exists(p):
+            df = pd.read_csv(p, parse_dates=['date'])
+            df = df.set_index('date').sort_index()
+            cat_series[sid] = df['sim_mm_h'].astype(float)
             continue
-        df = pd.read_csv(p, parse_dates=['date'])
-        df = df.set_index('date').sort_index()
-        cat_series[sid] = df['sim_mm_h'].astype(float)
+        # Fallback: use ensemble median from production per-member CSV
+        p_prod = os.path.join(args.da_dir, cat, f'{cat}_production_per_member.csv')
+        if os.path.exists(p_prod):
+            df = pd.read_csv(p_prod, parse_dates=['date'])
+            df = df.set_index('date').sort_index()
+            mem_cols = [c for c in df.columns if c.startswith('member_')]
+            cat_series[sid] = df[mem_cols].median(axis=1).astype(float)
+            continue
+        missing.append(cat)
 
     if missing:
-        print(f'  WARNING: missing test_results for {missing} — zero inflow assumed')
+        print(f'  WARNING: missing outputs for {missing} — zero inflow assumed')
     print(f'  Loaded {len(cat_series)}/21 catchments')
 
     # Common time index from first available catchment
