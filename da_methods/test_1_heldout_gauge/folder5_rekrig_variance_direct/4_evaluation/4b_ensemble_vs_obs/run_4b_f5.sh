@@ -20,7 +20,7 @@ TROUTE=/home/svyas/miniconda3/envs/troute/bin/python3
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 F1_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt_routed
-F5_DIR=/mnt/disk2/1400_sites_helene/da_results_f5_rekrig_variance_direct
+F5_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder5_rekrig_variance_direct
 USGS_CSV=/mnt/disk2/suma_helen_poster/03463300_usgs_hourly_2018_2024.csv
 
 CATS=(
