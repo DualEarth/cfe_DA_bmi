@@ -18,6 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 LEADTIME_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt
 DA_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt
+OBS_DIR=/home/svyas/catchment_ts_no_03463300_gapfilled
 ROUTE_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder1_vrugt_leadtime_routed
 USGS_CSV=/mnt/disk2/suma_helen_poster/03463300_usgs_hourly_2018_2024.csv
 
@@ -40,15 +41,17 @@ for CAT in "${CATS[@]}"; do
 
     echo "  [$CAT] Plotting pooled decay..."
     $TROUTE "$SCRIPT_DIR/plot_lead_time_decay.py" \
-        --cat-id       "$CAT"         \
+        --cat-id       "$CAT"          \
         --leadtime-dir "$LEADTIME_DIR" \
-        --da-dir       "$DA_DIR"
+        --da-dir       "$DA_DIR"       \
+        --obs-dir      "$OBS_DIR"
 
     echo "  [$CAT] Plotting decay by regime..."
     $TROUTE "$SCRIPT_DIR/plot_lead_time_decay_by_regime.py" \
-        --cat-id       "$CAT"         \
+        --cat-id       "$CAT"          \
         --leadtime-dir "$LEADTIME_DIR" \
-        --da-dir       "$DA_DIR"
+        --da-dir       "$DA_DIR"       \
+        --obs-dir      "$OBS_DIR"
 done
 
 # Gauge-level decay (needs routed parquets — run after route_lead_time_forecasts.py)
