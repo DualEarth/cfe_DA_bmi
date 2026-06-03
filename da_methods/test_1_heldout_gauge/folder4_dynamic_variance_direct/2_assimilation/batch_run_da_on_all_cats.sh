@@ -18,12 +18,12 @@ CATS=(
     cat-1016311 cat-1016312 cat-1016313 cat-1016314 cat-1016315
 )
 
-OBS_DIR=/home/svyas/catchment_ts_no_03463300_gapfilled
+OBS_DIR=/mnt/disk2/1400_sites_helene/catchment_ts_no_03463300_dynamic_variance
 BEST_PARAMS_SRC=/mnt/disk2/suma_helen_poster/catchment_results_1gauge_heldout
 CFE_DIR=/mnt/disk2/suma_helen_poster/cfe_py
 CONFIG_FILE=/mnt/disk2/suma_helen_poster/run_gpu/cat_03463300_bmi_config_cfe.json
 PARAM_BOUNDS=/mnt/disk2/suma_helen_poster/run_gpu/CFE_parameter_bounds.json
-OUT_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder4_dynamic_variance_direct
+OUT_DIR=/mnt/disk2/1400_sites_helene/da_results_heldout_dynamic_variance_direct
 FORCING_DIR1=/mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2023_2024_feb/forcings
 FORCING_DIR2=/mnt/disk1/usgs_streamflow_allgauges/subdaily_15min/test/output_03463300_nwmoperational/03463300/2024_feb_2025_sep/forcings
 
