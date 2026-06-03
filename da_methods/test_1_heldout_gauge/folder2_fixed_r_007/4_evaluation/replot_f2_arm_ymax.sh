@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate F2 2b hydro-state arm plots with y-axis capped at 2200 m³/s
-# to clip explosive ensemble members and make the plot readable.
+# and the routed open-loop baseline overlaid.
 #
 # Usage:
 #   bash replot_f2_arm_ymax.sh
@@ -10,7 +10,7 @@ set -euo pipefail
 TROUTE=/home/svyas/miniconda3/envs/troute/bin/python3
 SCRIPT=/home/svyas/cfe_DA_bmi/da_methods/test_1_heldout_gauge/folder1_variance_scaled_vrugt/4_evaluation/plot_da_perturbation_arms.py
 USGS_CSV=/mnt/disk2/suma_helen_poster/03463300_usgs_hourly_2018_2024.csv
-OL_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/openloop
+OL_CSV=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/openloop/routed_Q_test.csv
 F2_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder2_fixed_r007
 
 CATS=(
@@ -21,18 +21,18 @@ CATS=(
     cat-1016311 cat-1016312 cat-1016313 cat-1016314 cat-1016315
 )
 
+if [ ! -f "$OL_CSV" ]; then
+    echo "ERROR: routed open-loop not found: $OL_CSV"
+    exit 1
+fi
+
 SKIP=0; DONE=0; FAIL=0
 
 for CAT in "${CATS[@]}"; do
     HYDRO_CSV="$F2_DIR/$CAT/${CAT}_da_hydro_arm.csv"
-    OL_CSV="$OL_DIR/$CAT/${CAT}_test_results.csv"
 
     if [ ! -f "$HYDRO_CSV" ]; then
         echo "  [$CAT] No hydro arm CSV — skipping"
-        SKIP=$((SKIP + 1)); continue
-    fi
-    if [ ! -f "$OL_CSV" ]; then
-        echo "  [$CAT] No open-loop results — skipping"
         SKIP=$((SKIP + 1)); continue
     fi
 

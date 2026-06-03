@@ -64,11 +64,12 @@ def load_arm(path):
 
 
 def load_openloop_ts(path):
-    """Load a simple timeseries CSV (e.g. *_test_results.csv) and return a
-    pd.Series (datetime index → discharge m³/s) clipped to the plot window.
+    """Load a simple timeseries CSV and return a pd.Series (datetime → m³/s)
+    clipped to the plot window.
 
-    Expects columns: a time column ('time', 'datetime', etc.) and a discharge
-    column ('sim_mm_h' or similar).  Values in mm/h are converted to m³/s.
+    Handles two formats:
+      - routed_Q_test.csv  : date index + Q_routed_m3s column (already m³/s)
+      - *_test_results.csv : date column + sim_mm_h column (converted mm/h→m³/s)
     """
     df = pd.read_csv(path)
     time_col = next(
@@ -80,15 +81,22 @@ def load_openloop_ts(path):
         raise ValueError(f"No time column found in {path}")
     df[time_col] = pd.to_datetime(df[time_col])
 
+    # Prefer routed m³/s columns; fall back to sim_mm_h
     sim_col = next(
         (c for c in df.columns
-         if "sim" in c.lower() and ("mm" in c.lower() or "q" in c.lower())),
+         if any(k in c.lower() for k in ("q_routed", "routed", "q_cms", "q_m3s"))),
         None,
     )
     if sim_col is None:
+        sim_col = next(
+            (c for c in df.columns
+             if "sim" in c.lower() and ("mm" in c.lower() or "q" in c.lower())),
+            None,
+        )
+    if sim_col is None:
         sim_col = next((c for c in df.columns if "sim" in c.lower()), None)
     if sim_col is None:
-        raise ValueError(f"No sim column found in {path}")
+        raise ValueError(f"No discharge column found in {path}")
 
     series = df.set_index(time_col)[sim_col].astype(float)
     if "mm" in sim_col.lower():

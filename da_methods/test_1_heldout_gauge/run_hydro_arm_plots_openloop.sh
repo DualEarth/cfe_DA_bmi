@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Regenerate 2b hydro-state arm plots for F1, F2, F4, F5 with the open-loop
-# dashed baseline overlaid on each panel.
+# Regenerate 2b hydro-state arm plots for F1, F2, F4, F5 with the routed
+# open-loop baseline overlaid on each panel.
 #
-# Reads per-catchment _da_hydro_arm.csv from each experiment directory and
-# overlays the corresponding open-loop _test_results.csv (sim_mm_h → m³/s).
+# Uses openloop/routed_Q_test.csv (Q_routed_m3s column, already in m³/s,
+# correct timing via T-route) — same line on every catchment plot.
 #
 # Overwrites existing _2b_hydro_arm_helene.png files in each catchment subfolder.
 #
@@ -15,7 +15,7 @@ set -euo pipefail
 TROUTE=/home/svyas/miniconda3/envs/troute/bin/python3
 SCRIPT=/home/svyas/cfe_DA_bmi/da_methods/test_1_heldout_gauge/folder1_variance_scaled_vrugt/4_evaluation/plot_da_perturbation_arms.py
 USGS_CSV=/mnt/disk2/suma_helen_poster/03463300_usgs_hourly_2018_2024.csv
-OL_DIR=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/openloop
+OL_CSV=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/openloop/routed_Q_test.csv
 
 CATS=(
     cat-1016279 cat-1016280 cat-1016281 cat-1016282 cat-1016283
@@ -31,6 +31,12 @@ EXPS["F2"]=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder2_fixed_
 EXPS["F4"]=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder4_dynamic_variance_direct
 EXPS["F5"]=/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder5_rekrig_variance_direct
 
+if [ ! -f "$OL_CSV" ]; then
+    echo "ERROR: routed open-loop not found: $OL_CSV"
+    exit 1
+fi
+echo "Open-loop: $OL_CSV"
+
 SKIP=0; DONE=0; FAIL=0
 
 for EXP in F1 F2 F4 F5; do
@@ -42,18 +48,13 @@ for EXP in F1 F2 F4 F5; do
 
     for CAT in "${CATS[@]}"; do
         HYDRO_CSV="$ARM_DIR/$CAT/${CAT}_da_hydro_arm.csv"
-        OL_CSV="$OL_DIR/$CAT/${CAT}_test_results.csv"
 
         if [ ! -f "$HYDRO_CSV" ]; then
             echo "  [$EXP $CAT] No hydro arm CSV — skipping"
             SKIP=$((SKIP + 1)); continue
         fi
-        if [ ! -f "$OL_CSV" ]; then
-            echo "  [$EXP $CAT] No open-loop results CSV — skipping"
-            SKIP=$((SKIP + 1)); continue
-        fi
 
-        echo "  [$EXP $CAT] plotting with open-loop overlay..."
+        echo "  [$EXP $CAT] plotting..."
         $TROUTE "$SCRIPT" \
             --arm-dir   "$ARM_DIR"  \
             --cat-id    "$CAT"      \
@@ -65,4 +66,4 @@ for EXP in F1 F2 F4 F5; do
 done
 
 echo ""
-echo "=== Hydro arm plots (with open loop) done: done=$DONE  skipped=$SKIP  failed=$FAIL ==="
+echo "=== Hydro arm plots (with routed open loop) done: done=$DONE  skipped=$SKIP  failed=$FAIL ==="
