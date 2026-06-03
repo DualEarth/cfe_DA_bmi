@@ -64,9 +64,11 @@ OBS_DIR = None  # set by main() when --obs-dir is supplied
 def load_obs():
     if OBS_DIR is not None:
         obs_path = os.path.join(OBS_DIR, f"{CAT}.csv")
-        df = pd.read_csv(obs_path, parse_dates=['date'])
+        df = pd.read_csv(obs_path)
+        time_col = 'datetime' if 'datetime' in df.columns else 'date'
+        df[time_col] = pd.to_datetime(df[time_col])
         col = 'qkrig' if 'qkrig' in df.columns else 'obs_mm_h'
-        return df.set_index('date')[col].rename('obs_mm_h')
+        return df.set_index(time_col)[col].rename('obs_mm_h')
     obs_path = os.path.join(DA_DIR, CAT, f"{CAT}_test_results.csv")
     df = pd.read_csv(obs_path, parse_dates=['date'])
     return df.set_index('date')['obs_mm_h']
