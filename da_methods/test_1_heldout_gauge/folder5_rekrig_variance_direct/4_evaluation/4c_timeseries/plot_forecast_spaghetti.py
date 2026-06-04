@@ -1,5 +1,5 @@
 """
-plot_forecast_spaghetti.py
+plot_forecast_spaghetti.py — F5 (re-kriged variance direct)
 
 "All forecasts ending at this hour" — verification-time-fixed spaghetti view.
 
@@ -8,13 +8,13 @@ For every initialization time whose 18-hour forecast overlaps this window:
     DA  : shaded min/max band across 20 members + ensemble mean line
     OL  : ensemble mean line only (no shading), dashed
 
-Lines are colored by initialization DATE (7 colors, Sep 24-30) so the
-temporal progression is readable. USGS obs overlaid in black.
+Lines are colored by initialization DATE (7 colors, Sep 24-30).
+USGS obs overlaid in black.
 
 Inputs:
     <route-dir>/routed_leadtime_da_full.parquet
     <route-dir>/routed_leadtime_openloop_full.parquet
-    Wide format: issue_time, lead_hour, member_00..member_19 (q in m³/s)
+    Wide format: issue_time, lead_hour, member_00..member_19 (q in m3/s)
 
 Obs:
     /mnt/disk2/suma_helen_poster/03463300_usgs_hourly_2018_2024.csv
@@ -31,20 +31,18 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 
-DEFAULT_ROUTE_DIR = "/mnt/disk2/suma_helen_poster/da_results/v2_lead_time_forecast_hardcoded_r_routed"
+DEFAULT_ROUTE_DIR = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder5_rekrig_variance_direct_leadtime_routed"
 DEFAULT_USGS_CSV  = "/mnt/disk2/suma_helen_poster/03463300_usgs_hourly_2018_2024.csv"
 
 WATERSHED_AREA_KM2 = 113.18
 MM_H_TO_M3_S = WATERSHED_AREA_KM2 * 1000.0 / 3600.0
 
-# Verification window — only trajectories whose valid_time falls here are shown
 PLOT_START = pd.Timestamp("2024-09-24 18:00:00")
 PLOT_END   = pd.Timestamp("2024-09-30 06:00:00")
 
 HELENE_PEAK_START = pd.Timestamp("2024-09-26 12:00:00")
 HELENE_PEAK_END   = pd.Timestamp("2024-09-28 00:00:00")
 
-# One color per init date (Sep 24-30)
 DATE_COLORS = {
     "2024-09-24": "#1f77b4",
     "2024-09-25": "#ff7f0e",
@@ -93,11 +91,10 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     print("Loading parquets...")
-    da = load_parquet(os.path.join(args.route_dir, args.da_name))
-    ol = load_parquet(os.path.join(args.route_dir, args.ol_name))
+    da  = load_parquet(os.path.join(args.route_dir, args.da_name))
+    ol  = load_parquet(os.path.join(args.route_dir, args.ol_name))
     obs = load_usgs(args.usgs_csv)
 
-    # Keep only valid_times inside the plot window
     da = da[(da["valid_time"] >= PLOT_START) & (da["valid_time"] <= PLOT_END)]
     ol = ol[(ol["valid_time"] >= PLOT_START) & (ol["valid_time"] <= PLOT_END)]
 
@@ -106,14 +103,12 @@ def main():
 
     fig, ax = plt.subplots(figsize=(18, 6))
 
-    # Helene peak shading
     ax.axvspan(HELENE_PEAK_START, HELENE_PEAK_END,
                color="salmon", alpha=0.12, zorder=0)
     ax.text(HELENE_PEAK_START + pd.Timedelta(hours=6), 1.0, "Helene peak",
             transform=ax.get_xaxis_transform(),
             fontsize=9, color="firebrick", ha="left", va="top")
 
-    # Plot each initialization time's trajectory
     for t0 in issue_times:
         date_str = str(pd.Timestamp(t0).date())
         color = DATE_COLORS.get(date_str, "gray")
@@ -124,23 +119,19 @@ def main():
         if da_t.empty:
             continue
 
-        # DA: shaded band (min-max across 20 members) + ensemble mean
         ax.fill_between(da_t["valid_time"], da_t["ens_min"], da_t["ens_max"],
                         color=color, alpha=0.06, zorder=2)
         ax.plot(da_t["valid_time"], da_t["ens_mean"],
                 color=color, lw=0.8, alpha=0.55, zorder=3)
 
-        # OL: ensemble mean only, dashed
         if not ol_t.empty:
             ax.plot(ol_t["valid_time"], ol_t["ens_mean"],
                     color=color, lw=0.6, alpha=0.30, linestyle="--", zorder=2)
 
-    # USGS obs
     obs_w = obs.loc[PLOT_START:PLOT_END]
     ax.plot(obs_w.index, obs_w.values,
             color="black", lw=1.8, zorder=6, label="USGS obs")
 
-    # Legend: one patch per init date + obs + DA/OL style
     patches = [mpatches.Patch(color=c, label=f"Init {d}")
                for d, c in DATE_COLORS.items()]
     patches.append(plt.Line2D([0], [0], color="black", lw=1.8, label="USGS obs"))
@@ -153,10 +144,10 @@ def main():
 
     ax.set_xlim(PLOT_START, PLOT_END)
     ax.set_xlabel("Date", fontsize=11)
-    ax.set_ylabel("Discharge (m³/s)", fontsize=11)
+    ax.set_ylabel("Discharge (m3/s)", fontsize=11)
     ax.set_title(
-        "All 18-hour forecast trajectories ending in this window — USGS 03463300\n"
-        "Sep 24 18 UTC → Sep 30 06 UTC  |  DA: shaded band + mean  |  OL: mean dashed",
+        "All 18-hour forecast trajectories ending in this window — USGS 03463300 — F5 (re-kriged variance)\n"
+        "Sep 24 18 UTC -> Sep 30 06 UTC  |  DA: shaded band + mean  |  OL: mean dashed",
         fontsize=11,
     )
     ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
