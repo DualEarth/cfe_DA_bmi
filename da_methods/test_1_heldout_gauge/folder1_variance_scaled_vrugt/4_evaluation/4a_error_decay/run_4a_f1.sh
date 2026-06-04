@@ -57,15 +57,22 @@ done
 # Gauge-level decay (needs routed parquets — run after route_lead_time_forecasts.py)
 if [ -f "$ROUTE_DIR/routed_leadtime_da_full.parquet" ]; then
     echo "[F1-4a] Gauge-level decay (routed)..."
-    for CAT in "${CATS[@]}"; do
-        echo "  [$CAT] gauge-level..."
-        $TROUTE "$SCRIPT_DIR/plot_lead_time_decay_gauge.py" \
-            --route-dir "$ROUTE_DIR" \
-            --usgs-csv  "$USGS_CSV"
-    done
+    $TROUTE "$SCRIPT_DIR/plot_lead_time_decay_gauge.py" \
+        --route-dir "$ROUTE_DIR" \
+        --usgs-csv  "$USGS_CSV"
+
+    echo "[F1-4a] Fixed-target error plots..."
+    $TROUTE "$SCRIPT_DIR/plot_forecast_error_fixed_target.py" \
+        --route-dir "$ROUTE_DIR" \
+        --usgs-csv  "$USGS_CSV"
+
+    echo "[F1-4a] Per-init error plots..."
+    $TROUTE "$SCRIPT_DIR/plot_forecast_error_per_init.py" \
+        --route-dir "$ROUTE_DIR" \
+        --usgs-csv  "$USGS_CSV"
 else
-    echo "[F1-4a] Routed parquets not found — skipping gauge-level decay."
-    echo "         Run route_lead_time_forecasts.py first, then re-run this script."
+    echo "[F1-4a] Routed parquets not found — skipping gauge-level and error plots."
+    echo "         Run route_leadtime_f1.sh first, then re-run this script."
 fi
 
 echo "[F1-4a] Done."

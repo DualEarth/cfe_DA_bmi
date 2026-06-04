@@ -59,9 +59,19 @@ if [ -f "$ROUTE_DIR/routed_leadtime_da_full.parquet" ]; then
     $TROUTE "$SCRIPT_DIR/plot_lead_time_decay_gauge.py" \
         --route-dir "$ROUTE_DIR" \
         --usgs-csv  "$USGS_CSV"
+
+    echo "[F5-4a] Fixed-target error plots..."
+    $TROUTE "$SCRIPT_DIR/plot_forecast_error_fixed_target.py" \
+        --route-dir "$ROUTE_DIR" \
+        --usgs-csv  "$USGS_CSV"
+
+    echo "[F5-4a] Per-init error plots..."
+    $TROUTE "$SCRIPT_DIR/plot_forecast_error_per_init.py" \
+        --route-dir "$ROUTE_DIR" \
+        --usgs-csv  "$USGS_CSV"
 else
-    echo "[F5-4a] Routed parquets not found — skipping gauge-level decay."
-    echo "         Run route_leadtime_forecasts.py first, then re-run this script."
+    echo "[F5-4a] Routed parquets not found — skipping gauge-level and error plots."
+    echo "         Run route_leadtime_f5.sh (in 3_routing/) first, then re-run this script."
 fi
 
 echo "[F5-4a] Done."
