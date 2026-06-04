@@ -25,13 +25,15 @@ DA_COLOR = "tab:purple"
 OL_COLOR = "tab:gray"
 
 F5_DIR = "/mnt/disk2/suma_helen_poster/da_results_1gauge_heldout/folder5_rekrig_variance_direct"
+DEFAULT_KRIG_OBS_DIR = "/mnt/disk2/1400_sites_helene/catchment_ts_no_03463300_dynamic_variance_rekrig"
 
 DEFAULT_LEADTIME_DIR = F5_DIR
 DEFAULT_DA_DIR       = F5_DIR
 
-CAT = "cat-1016300"
+CAT          = "cat-1016300"
 LEADTIME_DIR = DEFAULT_LEADTIME_DIR
 DA_DIR       = DEFAULT_DA_DIR
+KRIG_OBS_DIR = DEFAULT_KRIG_OBS_DIR
 OUT_PNG      = os.path.join(LEADTIME_DIR, CAT, f"{CAT}_lead_time_decay.png")
 
 
@@ -44,9 +46,25 @@ def load_forecasts(path):
 
 
 def load_obs():
-    obs_path = os.path.join(DA_DIR, CAT, f"{CAT}_test_results.csv")
-    df = pd.read_csv(obs_path, parse_dates=['date'])
-    return df.set_index('date')['obs_mm_h']
+    # Prefer _test_results.csv if it exists; otherwise read from kriged obs file.
+    test_path = os.path.join(DA_DIR, CAT, f"{CAT}_test_results.csv")
+    if os.path.exists(test_path):
+        df = pd.read_csv(test_path, parse_dates=['date'])
+        return df.set_index('date')['obs_mm_h']
+    krig_path = os.path.join(KRIG_OBS_DIR, f"{CAT}.csv")
+    if not os.path.exists(krig_path):
+        raise FileNotFoundError(
+            f"No obs found: tried {test_path} and {krig_path}. "
+            f"Pass --krig-obs-dir to the re-kriged obs directory.")
+    df = pd.read_csv(krig_path)
+    t_col = next(c for c in df.columns
+                 if c.lower() in ('datetime', 'date', 'time', 'timestamp'))
+    obs_col = next(c for c in df.columns
+                   if c != t_col and 'var' not in c.lower()
+                   and pd.api.types.is_numeric_dtype(df[c]))
+    df[t_col] = pd.to_datetime(df[t_col])
+    print(f"  obs from kriged file, column '{obs_col}'")
+    return df.set_index(t_col)[obs_col].astype(float)
 
 
 def metrics_by_lead(df, member_cols, obs_series):
@@ -81,16 +99,20 @@ def metrics_by_lead(df, member_cols, obs_series):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cat-id',       default="cat-1016300")
-    parser.add_argument('--leadtime-dir', default=DEFAULT_LEADTIME_DIR,
+    parser.add_argument('--leadtime-dir',  default=DEFAULT_LEADTIME_DIR,
                         help='Dir holding <cat>/<cat>_lead_time_forecasts_{da,openloop}.csv')
-    parser.add_argument('--da-dir',       default=DEFAULT_DA_DIR,
+    parser.add_argument('--da-dir',        default=DEFAULT_DA_DIR,
                         help='Dir holding <cat>/<cat>_test_results.csv (for obs_mm_h)')
+    parser.add_argument('--krig-obs-dir',  default=DEFAULT_KRIG_OBS_DIR,
+                        help='Fallback: dir holding per-catchment kriged obs CSVs '
+                             '(used when _test_results.csv is absent)')
     args = parser.parse_args()
 
-    global CAT, LEADTIME_DIR, DA_DIR, OUT_PNG
+    global CAT, LEADTIME_DIR, DA_DIR, KRIG_OBS_DIR, OUT_PNG
     CAT          = args.cat_id
     LEADTIME_DIR = args.leadtime_dir
     DA_DIR       = args.da_dir
+    KRIG_OBS_DIR = args.krig_obs_dir
     OUT_PNG      = os.path.join(LEADTIME_DIR, CAT, f"{CAT}_lead_time_decay.png")
 
     da_path = os.path.join(LEADTIME_DIR, CAT, f"{CAT}_lead_time_forecasts_da.csv")
