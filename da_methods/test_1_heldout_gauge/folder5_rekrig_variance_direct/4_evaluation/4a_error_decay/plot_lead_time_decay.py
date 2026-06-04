@@ -57,11 +57,24 @@ def load_obs():
             f"No obs found: tried {test_path} and {krig_path}. "
             f"Pass --krig-obs-dir to the re-kriged obs directory.")
     df = pd.read_csv(krig_path)
+    print(f"  kriged obs file columns: {list(df.columns)}")
     t_col = next(c for c in df.columns
                  if c.lower() in ('datetime', 'date', 'time', 'timestamp'))
-    obs_col = next(c for c in df.columns
-                   if c != t_col and 'var' not in c.lower()
-                   and pd.api.types.is_numeric_dtype(df[c]))
+    # Prefer columns that look like discharge obs (mm/h); exclude step/index columns
+    obs_col = next(
+        (c for c in df.columns
+         if c != t_col and 'var' not in c.lower()
+         and any(k in c.lower() for k in ('obs', 'q', 'krig', 'mm', 'flow', 'discharge'))
+         and pd.api.types.is_numeric_dtype(df[c])),
+        None,
+    )
+    if obs_col is None:
+        # Fall back: any numeric column that isn't time-like or variance
+        obs_col = next(c for c in df.columns
+                       if c != t_col and 'var' not in c.lower()
+                       and 'step' not in c.lower() and 'time' not in c.lower()
+                       and 'index' not in c.lower()
+                       and pd.api.types.is_numeric_dtype(df[c]))
     df[t_col] = pd.to_datetime(df[t_col])
     print(f"  obs from kriged file, column '{obs_col}'")
     return df.set_index(t_col)[obs_col].astype(float)
