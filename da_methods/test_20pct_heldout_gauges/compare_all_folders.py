@@ -61,6 +61,13 @@ FOLDERS = [
         "lw": 1.4,
         "csv": f"{BASE}/dynamic_novrugt_seeded_routed/routed_Q_test.csv",
     },
+    {
+        "label": "F5: Re-kriged variance\nR(t)=σ²_krig (re-kriged network)",
+        "short": "F5 Rekrig σ²",
+        "color": "#9467bd",
+        "lw": 2.2,
+        "csv": f"{BASE}/folder5_rekrig_variance_direct/routed_Q_test.csv",
+    },
 ]
 
 
