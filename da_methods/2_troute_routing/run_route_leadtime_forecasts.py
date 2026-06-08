@@ -141,7 +141,7 @@ def route_scenario(label, cat_data, seg_ids_sorted, area_map,
         qlat_cube = np.zeros((n_members, n_segs, n_leads), dtype='float32')
 
         for sid, df in cat_data.items():
-            seg_pos = int(np.where(seg_ids_sorted == sid)[0]) if sid in seg_ids_sorted else -1
+            seg_pos = int(np.where(seg_ids_sorted == sid)[0][0]) if sid in seg_ids_sorted else -1
             if seg_pos < 0:
                 continue
             area = area_map.get(sid, 0.0)
