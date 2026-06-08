@@ -91,78 +91,97 @@ def plot_fan(df_da, df_ol, obs, out_path):
     df_da = add_valid_time(df_da)
     df_ol = add_valid_time(df_ol)
 
-    # filter to Helene window valid times
-    da_h  = df_da[(df_da['valid_time'] >= HELENE_START) & (df_da['valid_time'] <= HELENE_END)]
-    ol_h  = df_ol[(df_ol['valid_time'] >= HELENE_START) & (df_ol['valid_time'] <= HELENE_END)]
-    obs_h = obs[(obs.index >= HELENE_START) & (obs.index <= HELENE_END)]
+    # Filter to issue_times in Sep 24-30; valid_times extend naturally up to +18 h
+    da_h = df_da[
+        (df_da['issue_time'] >= HELENE_START) &
+        (df_da['issue_time'] <= HELENE_END)
+    ].copy()
+    ol_h = df_ol[
+        (df_ol['issue_time'] >= HELENE_START) &
+        (df_ol['issue_time'] <= HELENE_END)
+    ].copy()
+    plot_end = HELENE_END + pd.Timedelta(hours=18)
+    obs_h = obs[(obs.index >= HELENE_START) & (obs.index <= plot_end)]
 
-    # issue times that fall within Helene window (or whose forecasts cover it)
-    issue_times = sorted(da_h['issue_time'].unique())
-    # keep only issue times in Sep 24–30
-    issue_times = [t for t in issue_times
-                   if HELENE_START <= t <= HELENE_END]
+    # Group hourly issue_times into calendar days (Sep 24–30 only)
+    da_h['init_day'] = da_h['issue_time'].dt.normalize()
+    day_range = pd.date_range(HELENE_START.normalize(), HELENE_END.normalize(), freq='D')
 
     fig, ax = plt.subplots(figsize=(14, 5))
 
-    # ---- per-init-time fan ----
-    all_grand_mean_dfs = []
-    for i, t0 in enumerate(issue_times):
+    # ---- per-day fan: pool all hourly inits within each calendar day ----
+    all_mean_series = []
+    legend_handles  = []
+    for i, day in enumerate(day_range):
         color = INIT_COLORS[i % len(INIT_COLORS)]
-        sub = da_h[da_h['issue_time'] == t0]
+        sub = da_h[da_h['init_day'] == day]
         if sub.empty:
             continue
 
-        piv = sub.pivot_table(index='valid_time', columns='member',
-                              values='q_gauge_m3s', aggfunc='mean')
-        piv = piv.sort_index()
-        vt      = piv.index
-        mn      = piv.min(axis=1).values
-        mx      = piv.max(axis=1).values
-        med     = piv.median(axis=1).values
-        mean_   = piv.mean(axis=1).values
+        # pool all members + all hourly inits within the day → one time-series per member
+        grp = sub.groupby(['valid_time', 'member'])['q_gauge_m3s'].mean().reset_index()
+        piv = grp.pivot_table(index='valid_time', columns='member',
+                              values='q_gauge_m3s', aggfunc='mean').sort_index()
+        vt    = piv.index
+        mn    = piv.min(axis=1).values
+        mx    = piv.max(axis=1).values
+        med   = piv.median(axis=1).values
+        mean_ = piv.mean(axis=1).values
 
-        ax.fill_between(vt, mn, mx, color=color, alpha=0.18, linewidth=0)
-        ax.plot(vt, med, color=color, lw=1.0, alpha=0.85,
-                label=f"Init {t0.strftime('%Y-%m-%d')}")
+        shade = ax.fill_between(vt, mn, mx, color=color, alpha=0.22, linewidth=0)
+        line, = ax.plot(vt, med, color=color, lw=1.4, alpha=0.9)
+        legend_handles.append((shade, line, day.strftime("Init %Y-%m-%d")))
 
-        all_grand_mean_dfs.append(
-            pd.Series(mean_, index=vt, name=t0))
+        all_mean_series.append(pd.Series(mean_, index=vt, name=day))
 
-    # ---- grand mean across all init times ----
-    if all_grand_mean_dfs:
-        grand = pd.concat(all_grand_mean_dfs, axis=1).mean(axis=1).sort_index()
-        ax.plot(grand.index, grand.values,
-                color='#2ca02c', lw=2.8, zorder=5, label="F5 DA — grand mean")
+    # ---- grand mean (thick coloured line) ----
+    if all_mean_series:
+        grand = pd.concat(all_mean_series, axis=1).mean(axis=1).sort_index()
+        h_grand, = ax.plot(grand.index, grand.values,
+                           color='#2ca02c', lw=3.0, zorder=5)
 
     # ---- open loop grand median ----
-    ol_piv = ol_h.pivot_table(index='valid_time', columns='member',
-                              values='q_gauge_m3s', aggfunc='mean')
-    ol_med = ol_piv.median(axis=1).sort_index()
-    ax.plot(ol_med.index, ol_med.values,
-            color='black', lw=1.8, linestyle='--', zorder=4,
-            label="Open loop (no DA) — grand median")
+    ol_grp = ol_h.groupby(['valid_time', 'member'])['q_gauge_m3s'].mean().reset_index()
+    ol_piv = ol_grp.pivot_table(index='valid_time', columns='member',
+                                values='q_gauge_m3s', aggfunc='mean').sort_index()
+    ol_med = ol_piv.median(axis=1)
+    h_ol, = ax.plot(ol_med.index, ol_med.values,
+                    color='black', lw=1.8, linestyle='--', zorder=4)
 
     # ---- USGS obs ----
-    ax.plot(obs_h.index, obs_h.values,
-            color='black', lw=2.4, zorder=6, label="USGS obs")
+    h_obs, = ax.plot(obs_h.index, obs_h.values,
+                     color='black', lw=2.4, zorder=6)
 
-    # ---- Helene peak label ----
+    # ---- Helene peak annotation ----
     if len(obs_h) > 0:
         peak_t = obs_h.idxmax()
         peak_v = obs_h.max()
         ax.annotate("Helene peak",
                     xy=(peak_t, peak_v),
-                    xytext=(peak_t + pd.Timedelta(hours=6), peak_v * 1.04),
+                    xytext=(peak_t + pd.Timedelta(hours=8), peak_v * 0.97),
                     fontsize=9, color='#d62728',
                     arrowprops=dict(arrowstyle='->', color='#d62728', lw=1.2))
+
+    # ---- clean legend (one entry per day + grand mean + OL + obs) ----
+    import matplotlib.patches as mpatches
+    day_entries = [mpatches.Patch(color=INIT_COLORS[i % len(INIT_COLORS)],
+                                  alpha=0.7, label=label)
+                   for i, (_, _, label) in enumerate(legend_handles)]
+    extra = [
+        plt.Line2D([0], [0], color='#2ca02c', lw=3.0, label="F5 DA — grand mean"),
+        plt.Line2D([0], [0], color='black', lw=1.8, linestyle='--', label="Open loop — grand median"),
+        plt.Line2D([0], [0], color='black', lw=2.4, label="USGS obs"),
+    ]
+    ax.legend(handles=day_entries + extra,
+              fontsize=9, loc='upper left', framealpha=0.92, ncol=1)
 
     ax.set_ylabel("Discharge (m³/s)", fontsize=11)
     ax.set_xlabel("Date (UTC)", fontsize=11)
     ax.set_title(
         "F5 (re-kriged σ²) — ensemble forecast fan: initial state uncertainty  |  Sep 24–30 2024\n"
-        "USGS 03463300  |  Shaded = member min–max  |  Line = median per init time  |  Thick = grand mean",
+        "USGS 03463300  |  Shaded = member min–max  |  Line = median per init day  |  Thick = grand mean",
         fontsize=11)
-    ax.legend(fontsize=8.5, loc='upper left', framealpha=0.92, ncol=2)
+    ax.set_xlim(HELENE_START, plot_end)
     ax.grid(True, alpha=0.22)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
     ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
