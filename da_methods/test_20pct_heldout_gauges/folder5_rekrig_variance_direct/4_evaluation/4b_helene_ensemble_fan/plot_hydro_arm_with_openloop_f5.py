@@ -282,9 +282,15 @@ def main():
     print("Routing arms through T-Route (7 init times × 20 members)...")
     day_range = pd.date_range(HELENE_START.normalize(), HELENE_END.normalize(), freq='D')
 
-    fig, ax = plt.subplots(figsize=(16, 6))
-    ax.axvspan(HELENE_START, pd.Timestamp("2024-09-28 23:00:00"),
-               color='#ffcccc', alpha=0.35, zorder=0, label='_nolegend_')
+    HELENE_PEAK_START = pd.Timestamp("2024-09-26 12:00:00")
+    HELENE_PEAK_END   = pd.Timestamp("2024-09-28 00:00:00")
+
+    fig, ax = plt.subplots(figsize=(17, 6))
+    ax.axvspan(HELENE_PEAK_START, HELENE_PEAK_END,
+               color='salmon', alpha=0.12, zorder=0, label='_nolegend_')
+    ax.text(HELENE_PEAK_START + pd.Timedelta(hours=6), 1.0, "Helene peak",
+            transform=ax.get_xaxis_transform(),
+            fontsize=9, color='firebrick', ha='left', va='top')
 
     legend_patches = []
 
