@@ -19,7 +19,6 @@ remaining error at the gauge can be attributed to routing vs DA.
 Run on server:
     python3 plot_catchment_da_check_f5.py
     python3 plot_catchment_da_check_f5.py --da-dir /path/to/da --out-dir /path/to/out
-    python3 plot_catchment_da_check_f5.py --cats cat-1016300 cat-1016301
 """
 
 import argparse
@@ -31,13 +30,7 @@ import matplotlib.pyplot as plt
 DEFAULT_DA_DIR  = "/mnt/disk2/suma_helen_poster/da_results/folder5_rekrig_variance_direct"
 DEFAULT_OUT_DIR = None   # falls back to DEFAULT_DA_DIR
 
-ALL_CATS = [
-    "cat-1016279", "cat-1016280", "cat-1016281", "cat-1016282", "cat-1016283",
-    "cat-1016300",
-    "cat-1016301", "cat-1016302", "cat-1016303", "cat-1016304", "cat-1016305",
-    "cat-1016306", "cat-1016307", "cat-1016308", "cat-1016309", "cat-1016310",
-    "cat-1016311", "cat-1016312", "cat-1016313", "cat-1016314", "cat-1016315",
-]
+CAT_ID = "cat-1016300"  # focal catchment draining to gauge 03463300
 
 HELENE_ZOOM_START = pd.Timestamp("2024-09-20")
 HELENE_ZOOM_END   = pd.Timestamp("2024-10-05")
@@ -116,29 +109,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--da-dir",  default=DEFAULT_DA_DIR)
     parser.add_argument("--out-dir", default=DEFAULT_OUT_DIR)
-    parser.add_argument("--cats",    nargs="+", default=ALL_CATS)
     args = parser.parse_args()
 
     out_dir = args.out_dir or args.da_dir
     os.makedirs(out_dir, exist_ok=True)
 
-    ok = 0; skip = 0
-    for cat in args.cats:
-        csv_path = os.path.join(args.da_dir, cat, f"{cat}_test_results.csv")
-        if not os.path.exists(csv_path):
-            print(f"  [skip] {cat} — {csv_path} not found")
-            skip += 1
-            continue
-        df = pd.read_csv(csv_path)
-        required = {"date", "sim_mm_h", "obs_mm_h", "precip_mm_h"}
-        if not required.issubset(df.columns):
-            print(f"  [skip] {cat} — missing columns {required - set(df.columns)}")
-            skip += 1
-            continue
-        plot_catchment(cat, df, out_dir)
-        ok += 1
-
-    print(f"\nDone: {ok} plotted, {skip} skipped.")
+    csv_path = os.path.join(args.da_dir, CAT_ID, f"{CAT_ID}_test_results.csv")
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(csv_path)
+    df = pd.read_csv(csv_path)
+    plot_catchment(CAT_ID, df, out_dir)
+    print("Done.")
 
 
 if __name__ == "__main__":
