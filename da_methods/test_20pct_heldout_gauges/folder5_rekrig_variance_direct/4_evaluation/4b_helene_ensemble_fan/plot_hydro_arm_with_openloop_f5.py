@@ -184,7 +184,10 @@ def load_usgs(usgs_csv):
     q_col    = next(c for c in df.columns
                     if any(k in c.lower() for k in ('q', 'flow', 'discharge')))
     df[date_col] = pd.to_datetime(df[date_col])
-    return df.set_index(date_col)[q_col].astype(float)
+    obs = df.set_index(date_col)[q_col].astype(float)
+    if 'mm' in q_col.lower():
+        obs = obs * WATERSHED_AREA_KM2 * 1000.0 / 3600.0   # mm/h → m³/s
+    return obs
 
 
 # ── Open loop helper ──────────────────────────────────────────────────────────
