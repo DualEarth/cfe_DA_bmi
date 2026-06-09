@@ -132,7 +132,7 @@ def plot_pooled(out_path, leads_da, nse_da, leads_ol, nse_ol):
     ax.set_ylabel("NSE (ensemble-mean vs USGS obs)", fontsize=11)
     ax.set_title("Gauge-level lead-time NSE decay — F5 (re-kriged σ²), 20% holdout\n"
                  "USGS 03463300  |  all issue times pooled (Oct 2023 – Oct 2024)", fontsize=12)
-    ax.set_xticks(np.arange(0, int(max(leads_da)) + 1, 12))
+    ax.set_xticks(np.arange(0, int(max(leads_da)) + 1, 1))
     ax.set_ylim(-0.1, 1.05)
     ax.grid(True, alpha=0.25)
     ax.legend(fontsize=10, loc='lower left', frameon=True, framealpha=0.92)
@@ -163,7 +163,7 @@ def plot_by_regime(out_path, regime_results):
         ax.axhline(0, color='black', lw=0.8, linestyle=':', alpha=0.5)
         ax.set_title(f"{label}\n({n_issue} issue times)", fontsize=10)
         ax.set_xlabel("Lead time (hours)", fontsize=10)
-        ax.set_xticks(np.arange(0, int(max(leads_da)) + 1, 12))
+        ax.set_xticks(np.arange(0, int(max(leads_da)) + 1, 1))
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize=9, loc='lower left', frameon=True, framealpha=0.9)
 
