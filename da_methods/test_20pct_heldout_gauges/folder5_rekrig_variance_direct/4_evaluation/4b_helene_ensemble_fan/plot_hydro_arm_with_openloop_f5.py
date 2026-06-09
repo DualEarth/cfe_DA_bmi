@@ -57,9 +57,10 @@ CATS = [
     'cat-1016315',
 ]
 
-TERMINAL_INT     = 1016283   # wb-1016283 = gauge 03463300
-DT               = 3600.0
-QTS_SUBDIVISIONS = 1
+TERMINAL_INT       = 1016283   # wb-1016283 = gauge 03463300
+DT                 = 3600.0
+QTS_SUBDIVISIONS   = 1
+WATERSHED_AREA_KM2 = 113.18   # total drainage area to gauge 03463300
 
 HELENE_START = pd.Timestamp("2024-09-24 00:00:00")
 HELENE_END   = pd.Timestamp("2024-09-30 23:00:00")
