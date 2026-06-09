@@ -54,7 +54,7 @@ TEST_START   = "2023-10-01 00:00:00"
 TEST_END     = "2024-10-31 23:00:00"
 
 # Forecast lead time (hours after each issue time)
-FORECAST_LEAD_HOURS = 120
+FORECAST_LEAD_HOURS = 18
 
 # Default densification window — Hurricane Helene
 DEFAULT_DENSE_START = "2024-09-24 00:00:00"
