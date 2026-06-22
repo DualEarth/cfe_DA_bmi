@@ -62,3 +62,24 @@ $PY route_forecast.py \
 
 ---
 - To run unattended/in the background, prefix a command with `nohup ... > run.log 2>&1 &`.
+
+## CFE parameters — where they come from / how to re-calibrate
+
+The `--params-dir` in Step 1 points to pre-calibrated CFE best-parameter JSON files
+(`<cat-id>_best_params.json`, one per catchment).  Two sets are available:
+
+| Set | Calibration | Use when |
+|-----|-------------|----------|
+| `held_in_gauge/params/` | gauge 03463300 **included** in calibration | default — best skill at the target gauge |
+| `held_out_gauge/params/` | gauge 03463300 **withheld** | evaluating out-of-sample generalization |
+
+Both sets live in the companion calibration repo.  To **re-run or extend calibration**,
+follow the workflow in:
+
+> **[calibrate-cfe PR #25](https://github.com/NWC-CUAHSI-Summer-Institute/calibrate-cfe/pull/25)**
+> (`multicatchment-calibration-held-in-out` branch)
+
+That repo uses DDS (Dynamically Dimensioned Search, 1 000 iterations via spotpy) against
+the 2020–2022 retrospective period and writes one `<cat-id>_best_params.json` per catchment.
+Clone it, checkout the branch above, and follow its README.
+
