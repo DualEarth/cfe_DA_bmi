@@ -68,6 +68,12 @@ SPECIAL_AREA_KM2 = {
     "03456500": 137.59,
 }
 
+# Terminal segment override: wb-1016569 is the true East Fork outlet.
+# The 43-cat GPKG never links EF segs to the main-network terminal.
+SPECIAL_TERMINAL_INT = {
+    "03456500": 1016569,
+}
+
 DT               = 3600.0
 SUBSTEPS         = 12
 QTS_SUBDIVISIONS = 1
@@ -232,6 +238,13 @@ def process_gauge(gauge, times, nts):
         net["area_km2"] = SPECIAL_AREA_KM2[gauge]
         net["area_m2"]  = SPECIAL_AREA_KM2[gauge] * 1e6
         print(f"  Area override: {old_area:.2f} km2 → {net['area_km2']:.2f} km2")
+
+    if gauge in SPECIAL_TERMINAL_INT:
+        t_int = SPECIAL_TERMINAL_INT[gauge]
+        seg_ids = net["param_df"].index.values
+        idx = int(np.where(seg_ids == t_int)[0][0])
+        net["terminal_pos"] = idx
+        print(f"  Terminal override: wb-{t_int}")
 
     q_heldin  = load_cal_and_route(net, heldin_dir,  times, nts)
     q_heldout = load_cal_and_route(net, heldout_dir, times, nts)
