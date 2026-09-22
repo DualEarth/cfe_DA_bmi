@@ -65,7 +65,7 @@ SPECIAL_KRIG_COL = {
 # 03456500: only 20 East Fork cats (cat-1016565..1016584) have cal results;
 # the full GPKG may include the entire upstream network at higher area.
 SPECIAL_AREA_KM2 = {
-    "03456500": 137.59,
+    "03456500": 133.38,   # USGS drain_area_va; matches the KV obs mm/h conversion
 }
 
 # Terminal segment override: wb-1016569 is the true East Fork outlet.
