@@ -3,7 +3,7 @@
 Routing:  /mnt/disk2/al_storm_2026/gpkg/gage-{gauge}_subset.gpkg
 Cal:      /mnt/disk2/svyas_clean_run/calibration_al_storm_2026/{cat}/{cat}_cal_results.csv
 USGS obs: /mnt/disk2/al_storm_2026/usgs_obs_12/{gauge}.csv  (q_m3s column)
-Output:   results/Alabama gauges/{gauge}/gauge_{gauge}_routed.png
+Output:   results/Alabama_gauges/{gauge}/gauge_{gauge}_routed.png
 
 Run on dualearth1:
   python3 route_and_plot_al_storm.py [--gauge XXXXXXXX]
@@ -30,7 +30,7 @@ from troute.routing.fast_reach.mc_reach import compute_network_structured
 GPKG_DIR  = Path("/mnt/disk2/al_storm_2026/gpkg")
 CAL_DIR   = Path("/mnt/disk2/svyas_clean_run/calibration_al_storm_2026")
 USGS_DIR  = Path("/mnt/disk2/al_storm_2026/usgs_obs_12")
-OUT_BASE  = Path("/home/svyas/qkrig_DA/results/Alabama gauges")
+OUT_BASE  = Path("/home/svyas/qkrig_DA/results/Alabama_gauges")
 
 # ── Constants ────────────────────────────────────────────────────────────────
 DT = 3600.0; SUBSTEPS = 12; QTS_SUBDIVISIONS = 1
