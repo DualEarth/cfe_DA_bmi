@@ -1,6 +1,7 @@
 *.png
 !figures/**/*.png
 !**/figures/**/*.png
+!results/Alabama gauges/**/*.png
 *.pdf
 *.pptx
 __pycache__/
